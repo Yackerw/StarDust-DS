@@ -110,8 +110,6 @@ void QuaternionInverse(Quaternion *quat, Quaternion *out);
 
 void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out);
 
-void QuaternionToEuler(Quaternion *quat, Vec3 *out);
-
 void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out);
 
 f32 Magnitude(Vec3 *vec);

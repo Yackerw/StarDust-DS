@@ -11,7 +11,7 @@ Object firstObject;
 void(*updateFuncs[256])(Object*);
 void(*lateUpdateFuncs[256])(Object*);
 void(*startFuncs[256])(Object*);
-bool(*collisionFuncs[256])(Object*, Object*, Vec3*, int, CollisionTriangle*);
+bool(*collisionFuncs[256])(Object*, CollisionHit*);
 void(*destroyFuncs[256])(Object*);
 int currFunc;
 
@@ -278,14 +278,18 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	unsigned int* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
 	f32 penetration;
 	Vec3 normal;
+	CollisionHit hitInfo;
+	hitInfo.colliderType = COLLIDER_MESH;
+	hitInfo.hitObject = meshObject;
 	// now check them once more for whether they're on the plane
 	// we check them one at a time like this because otherwise you'll get caught up on lines and verts when you should
 	// be on a flat surface
 	for (int i = 0; i < totalTris; ++i) {
 		bool onPlane;
-		if (SphereOnTrianglePlane(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &normal, &penetration, &onPlane)) {
-			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, meshObject, &normal, penetration, &meshObject->meshCol->triangles[trisToCollideWith[i]]))
-				MoveObjectOut(penetration, &normal, sphere, meshObject, &newSphere);
+		if (SphereOnTrianglePlane(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration, &onPlane)) {
+			hitInfo.hitTri = trisToCollideWith[i];
+			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
 			trisToCollideWith[i] = -1;
 		}
 		if (!onPlane) {
@@ -294,17 +298,19 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	}
 	// lines...
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != -1 && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &normal, &penetration)) {
-			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, meshObject, &normal, penetration, &meshObject->meshCol->triangles[trisToCollideWith[i]]))
-				MoveObjectOut(penetration, &normal, sphere, meshObject, &newSphere);
+		if (trisToCollideWith[i] != -1 && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+			hitInfo.hitTri = trisToCollideWith[i];
+			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
 			trisToCollideWith[i] = -1;
 		}
 	}
 	// verts
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != -1 && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &normal, &penetration)) {
-			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, meshObject, &normal, penetration, &meshObject->meshCol->triangles[trisToCollideWith[i]]))
-				MoveObjectOut(penetration, &normal, sphere, meshObject, &newSphere);
+		if (trisToCollideWith[i] != -1 && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+			hitInfo.hitTri = trisToCollideWith[i];
+			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
 		}
 	}
 	free(trisToCollideWith);
@@ -314,7 +320,13 @@ void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 	f32 pen;
 	Vec3 normal;
 	if (SphereOnSphere(collider->sphereCol, collidee->sphereCol, &pen, &normal)) {
-		if (collisionFuncs[collider->objectType] == NULL || collisionFuncs[collider->objectType](collider, collidee, &normal, pen, NULL)) {
+		CollisionHit hitInfo;
+		hitInfo.colliderType = COLLIDER_SPHERE;
+		hitInfo.normal = normal;
+		hitInfo.penetration = pen;
+		hitInfo.hitObject = collidee;
+		hitInfo.hitTri = -1;
+		if (collisionFuncs[collider->objectType] == NULL || collisionFuncs[collider->objectType](collider, &hitInfo)) {
 			normal.x = mulf32(pen, normal.x);
 			normal.y = mulf32(pen, normal.y);
 			normal.z = mulf32(pen, normal.z);
@@ -447,7 +459,7 @@ void ProcessObjects() {
 #endif
 }
 
-int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, Object*, Vec3*, int, CollisionTriangle*), void(*lateUpdate)(Object*), void(*destroy)(Object*)) {
+int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, CollisionHit*), void(*lateUpdate)(Object*), void(*destroy)(Object*)) {
 	updateFuncs[currFunc] = update;
 	startFuncs[currFunc] = start;
 	collisionFuncs[currFunc] = collision;

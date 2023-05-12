@@ -347,19 +347,6 @@ void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out) {
 	out->w = cosLerp(angle);
 }
 
-void QuaternionToEuler(Quaternion *quat, Vec3 *out) {
-	// i hate quaternion math
-	f32 r11, r12, r21, r31, r32;
-	r11 = 2*(mulf32(quat->x, quat->y) + mulf32(quat->w, quat->z));
-	r12 = mulf32(quat->w, quat->w) + mulf32(quat->x, quat->x) - mulf32(quat->y, quat->y) - mulf32(quat->z, quat->z);
-	r21 = -2*(mulf32(quat->x, quat->z) + mulf32(quat->w, quat->y));
-	r31 = 2*(mulf32(quat->y, quat->z) + mulf32(quat->w, quat->x));
-	r32 = mulf32(quat->w, quat->w) - mulf32(quat->x, quat->x) - mulf32(quat->y, quat->y) + mulf32(quat->z, quat->z);
-	out->x = Atan2(r31, r32);
-	out->y = asinLerp(r21);
-	out->z = Atan2(r11, r12);
-}
-
 void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
 	f32 dot = DotProduct(v1, v2);
 	Vec3 a;

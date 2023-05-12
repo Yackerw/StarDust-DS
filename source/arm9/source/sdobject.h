@@ -58,7 +58,7 @@ extern Object firstObject;
 
 void ProcessObjects();
 
-int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, Object*, Vec3*, int, CollisionTriangle*), void(*lateUpdate)(Object*), void(*destroy)(Object*));
+int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, CollisionHit*), void(*lateUpdate)(Object*), void(*destroy)(Object*));
 
 Object *CreateObject(int type, Vec3 *position);
 
