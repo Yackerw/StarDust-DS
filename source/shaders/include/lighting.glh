@@ -1,0 +1,8 @@
+uniform vec3 lightDirection;
+uniform vec3 lightColor;
+uniform vec3 ambient;
+
+vec3 ApplyLighting(vec3 col, vec3 normal) {
+	// TODO: shadows, specular, etc
+	return col * (ambient + clamp(dot(lightDirection, normal), 0, 1) * lightColor);
+}

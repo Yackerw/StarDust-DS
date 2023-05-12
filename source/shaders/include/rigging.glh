@@ -1,0 +1,17 @@
+uniform mat4 boneMatrices[128];
+
+vec4 ApplyRig(vec4 position, ivec4 indices, vec4 weights) {
+	vec4 retValue = boneMatrices[indices.x] * position * weights.x;
+	retValue += boneMatrices[indices.y] * position * weights.y;
+	retValue += boneMatrices[indices.z] * position * weights.z;
+	retValue += boneMatrices[indices.w] * position * weights.w;
+	return retValue;
+}
+
+vec3 ApplyRigNormal(vec3 normal, ivec4 indices, vec4 weights) {
+	vec3 retValue = transpose(inverse(mat3(boneMatrices[indices.x]))) * normal * weights.x;
+	retValue += transpose(inverse(mat3(boneMatrices[indices.y]))) * normal * weights.y;
+	retValue += transpose(inverse(mat3(boneMatrices[indices.z]))) * normal * weights.z;
+	retValue += transpose(inverse(mat3(boneMatrices[indices.w]))) * normal * weights.w;
+	return retValue;
+}

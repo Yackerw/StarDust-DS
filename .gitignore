@@ -1,0 +1,9 @@
+source/arm7/build
+source/arm9/build
+source/arm7/StarDustDS.elf
+source/arm9/StarDustDS.elf
+source/Debug
+source/Release
+source/.vs
+source/StarDust/Debug
+source/StarDust/Release

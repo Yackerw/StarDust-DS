@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\PC">
+      <UniqueIdentifier>{a876387a-4a02-4f34-9a68-0633e37a1266}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\PC">
+      <UniqueIdentifier>{24a6cd50-6a36-4ef0-8313-d729bda82926}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\PC\Renderer">
+      <UniqueIdentifier>{998659f9-dbf0-4fb9-86b3-d7a6a78e851d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\PC\Renderer">
+      <UniqueIdentifier>{ffefa0de-d1ea-4b8c-8c79-c50b966d742c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\PC\Renderer\OpenGL">
+      <UniqueIdentifier>{051028ac-de53-4a8e-ae73-bd3f047c87ef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\PC\Renderer\OpenGL">
+      <UniqueIdentifier>{71fdde76-15d3-4fc8-b410-a81fb0f6beea}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\arm9\source\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdcollision.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sddelta.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdfile.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdmath.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdobject.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdrender.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdsound.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\pcaudio.cpp">
+      <Filter>Source Files\PC</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\Mesh.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\PsuedoVector.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\RenderTexture.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\Shader.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\Texture.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\Window.c">
+      <Filter>Source Files\PC\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\PC\Renderer\OpenGL\OpenGLRenderer.c">
+      <Filter>Source Files\PC\Renderer\OpenGL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\VSDeps\nds.c">
+      <Filter>Source Files\PC</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\arm9\source\sdcollision.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sddelta.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdfile.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdmath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdobject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdrender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdsound.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\pcaudio.h">
+      <Filter>Header Files\PC</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\Window.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\Texture.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\Shader.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\RenderTexture.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\PsuedoVector.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\Mesh.h">
+      <Filter>Header Files\PC\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\PC\Renderer\OpenGL\OpenGLRenderer.h">
+      <Filter>Header Files\PC\Renderer\OpenGL</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
