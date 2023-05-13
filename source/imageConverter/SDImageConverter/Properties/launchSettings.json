@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SDImageConverter": {
+      "commandName": "Project",
+      "commandLineArgs": "-t8 fonttest.png"
+    }
+  }
+}

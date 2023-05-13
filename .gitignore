@@ -7,3 +7,6 @@ source/Release
 source/.vs
 source/StarDust/Debug
 source/StarDust/Release
+source/imageConverter/.vs
+source/imageConverter/SDImageConverter/obj
+source/imageConverter/SDImageConverter/bin/Debug
