@@ -194,6 +194,8 @@ void UploadTexture(Texture* input);
 
 Texture *LoadTexture(char *input, bool upload);
 
+void UnloadTexture(Texture* tex);
+
 void SetLightDir(int x, int y, int z);
 
 void SetLightColor(int color);
