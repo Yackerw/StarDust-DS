@@ -13,7 +13,7 @@ void scanKeys() {
 }
 
 u16 keysDown() {
-	return currKeysState & !prevKeysState;
+	return currKeysState & ~prevKeysState;
 }
 
 u16 keysHeld() {
@@ -25,5 +25,5 @@ u16 keysCurrent() {
 }
 
 u16 keysUp() {
-	return prevKeysState & !currKeysState;
+	return prevKeysState & ~currKeysState;
 }
