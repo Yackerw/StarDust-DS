@@ -33,7 +33,6 @@ typedef struct {
 	uint dataSize;
 	bool streamed;
 	int fOffset;
-	bool ogg;
 	union {
 		unsigned char* samples;
 		short* shortSamples;
