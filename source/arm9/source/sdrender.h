@@ -161,7 +161,7 @@ struct SDMaterial {
 	f32 texOffsY;
 	f32 texScaleX;
 	f32 texScaleY;
-	Vec3 emission;
+	Vec3i emission;
 };
 
 typedef struct {
