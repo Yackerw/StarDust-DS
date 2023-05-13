@@ -36,7 +36,7 @@ void DestroyObjectInternal(Object *object) {
 	free(object);
 }
 
-void RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo) {
+bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo) {
 	Object* colObject = firstObject.next;
 
 	bool everHit = false;
@@ -117,7 +117,9 @@ void RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMa
 			hitInfo->hitTri = closestTriHit;
 			hitInfo->colliderType = closestHitType;
 		}
+		return true;
 	}
+	return false;
 }
 
 int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, CollisionHit* hitInfos, int maxHit) {

@@ -62,7 +62,7 @@ int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision
 
 Object *CreateObject(int type, Vec3 *position);
 
-void RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo);
+bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo);
 
 int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, CollisionHit* hitInfos, int maxHit);
 
