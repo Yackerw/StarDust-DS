@@ -246,7 +246,11 @@ void InitializeSubBG();
 
 void UploadSprite(Sprite* sprite, bool sub, bool BG);
 
+void LoadSpriteFromRAM(Sprite* sprite);
+
 Sprite* LoadSprite(char* input, bool sub, bool upload);
+
+int LoadSpriteAsync(char* input, bool sub, bool upload, void (*callBack)(void* data, Sprite* sprite), void* callbackData);
 
 void UnloadSprite(Sprite* sprite);
 
