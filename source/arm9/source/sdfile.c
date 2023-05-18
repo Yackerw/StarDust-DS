@@ -155,7 +155,9 @@ void CancelAsyncRead(int id) {
 	AsyncReadData* ard = firstAsyncRead.next;
 	while (ard != NULL) {
 		if (ard->id == id) {
-			ard->callBack(ard->callBackData, false);
+			if (ard->callBack != NULL) {
+				ard->callBack(ard->callBackData, false);
+			}
 			ard->prev->next = ard->next;
 			if (ard->next != NULL) {
 				ard->next->prev = ard->prev;
