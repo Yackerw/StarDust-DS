@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include "sdfile.h"
 #include <stdlib.h>
-//#define FLIP_X
 
 typedef struct {
 	Vec3 position;
@@ -65,19 +64,76 @@ int bgID;
 
 Texture startTexture;
 
-Model *LoadModel(char *input) {
-	char* nativeDir = DirToNative(input);
-	FILE *f = fopen(nativeDir, "rb");
-	free(nativeDir);
-	if (f == NULL) {
-		return NULL;
+typedef struct {
+	FILE* f;
+	Model* model;
+	void (*callBack)(void* data, Model* model);
+	void* callBackData;
+	char* texDir;
+} ModelCallbackData;
+
+typedef struct {
+	FILE* f;
+	Texture* texture;
+	void (*callBack)(void* data, Texture* model);
+	void* callBackData;
+} TextureCallbackData;
+
+typedef struct {
+	void (*callBack)(void* data);
+	void* callBackData;
+	Model* modelToTexture;
+	int matId;
+}ModelTexturesCallbackData;
+
+typedef struct TextureQueue TextureQueue;
+
+struct TextureQueue {
+	char* textureToLoad;
+	bool upload;
+	void (*callBack)(void* data, Texture* texture);
+	void* callBackData;
+	FILE* f;
+	Texture* tex;
+	TextureQueue* prev;
+	TextureQueue* next;
+};
+
+typedef struct {
+	FILE* f;
+	Sprite* sprite;
+	bool sub;
+	bool upload;
+	void (*callBack)(void* data, Sprite* sprite);
+	void* callBackData;
+} SpriteCallbackData;
+
+typedef struct {
+	FILE* f;
+	Animation* anim;
+	void (*callBack)(void* data, Animation* anim);
+	void* callBackData;
+} AnimationCallbackData;
+
+TextureQueue* firstTextureQueue;
+
+void LoadModelTexturesCallback(void* data, Texture* texture) {
+	ModelTexturesCallbackData* mtcbd = (ModelTexturesCallbackData*)data;
+
+	if (texture != NULL) {
+		mtcbd->modelToTexture->defaultMats[mtcbd->matId].texture = texture;
+		++texture->numReferences;
 	}
-	fseek(f, 0, SEEK_END);
-	int fsize = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	Model *retValue = (Model*)malloc(fsize);
-	fread_MusicYielding(retValue, fsize, 1, f);
-	fclose(f);
+
+	if (mtcbd->callBack != NULL) {
+		mtcbd->callBack(mtcbd->callBackData);
+	}
+	free(data);
+}
+
+void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, void (*asyncCallback)(void* data), void* asyncCallbackData) {
+	Model* retValue = model;
+	char* input = textureDir;
 	retValue->vertexGroups = (VertexHeader*)((unsigned int)retValue->vertexGroups + (unsigned int)retValue);
 	retValue->defaultMats = (SDMaterial*)((uint)retValue + (uint)retValue->defaultMats);
 	retValue->materialTextureNames = (char*)((uint)retValue + (uint)retValue->materialTextureNames);
@@ -90,7 +146,7 @@ Model *LoadModel(char *input) {
 			memcpy(&retValue->skeleton[i].inverseMatrix, &tempMtx, sizeof(m4x4));
 		}
 	}
-	char *currString = retValue->materialTextureNames;
+	char* currString = retValue->materialTextureNames;
 	// do this before the loop for optimization
 	int inputLen = strlen(input);
 	// cut off everything after the last / or backslash
@@ -106,9 +162,28 @@ Model *LoadModel(char *input) {
 		strcpy(tmpString + inputLen, currString);
 		currString += strlen(currString);
 		currString += 1;
-		retValue->defaultMats[i].texture = LoadTexture(tmpString, true);
-		if (retValue->defaultMats[i].texture != NULL) {
-			retValue->defaultMats[i].texture->numReferences += 1;
+		if (!asyncTextures) {
+			retValue->defaultMats[i].texture = LoadTexture(tmpString, true);
+			if (retValue->defaultMats[i].texture != NULL) {
+				retValue->defaultMats[i].texture->numReferences += 1;
+			}
+		}
+		else {
+			retValue->defaultMats[i].texture = NULL;
+
+			ModelTexturesCallbackData* callbackData = (ModelTexturesCallbackData*)malloc(sizeof(ModelTexturesCallbackData));
+
+			if (i == retValue->materialCount - 1) {
+				callbackData->callBack = asyncCallback;
+				callbackData->callBackData = asyncCallbackData;
+			}
+			else {
+				callbackData->callBack = NULL;
+			}
+			callbackData->matId = i;
+			callbackData->modelToTexture = retValue;
+
+			LoadTextureAsync(tmpString, true, LoadModelTexturesCallback, callbackData);
 		}
 	}
 
@@ -261,7 +336,168 @@ Model *LoadModel(char *input) {
 	retValue->boundsMin.z = Fixed32ToNative(*(int*)&retValue->boundsMin.z);
 
 #endif
+}
+
+Model *LoadModel(char *input) {
+	char* nativeDir = DirToNative(input);
+	FILE *f = fopen(nativeDir, "rb");
+	free(nativeDir);
+	if (f == NULL) {
+		return NULL;
+	}
+	fseek(f, 0, SEEK_END);
+	int fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	Model *retValue = (Model*)malloc(fsize);
+	fread_MusicYielding(retValue, fsize, 1, f);
+	fclose(f);
+	SetupModelFromMemory(retValue, input, false, NULL, NULL);
 	return retValue;
+}
+
+void LoadModelAsyncInitCallback(void* data) {
+	ModelCallbackData* cbd = (ModelCallbackData*)data;
+	cbd->callBack(cbd->callBackData, cbd->model);
+	free(cbd);
+}
+
+void LoadModelAsyncCallback(void* data, bool success) {
+	ModelCallbackData* cbd = (ModelCallbackData*)data;
+	fclose(cbd->f);
+	if (success) {
+		SetupModelFromMemory(cbd->model, cbd->texDir, true, LoadModelAsyncInitCallback, cbd);
+	}
+	else {
+		cbd->callBack(cbd->callBackData, NULL);
+		free(cbd);
+	}
+}
+
+int LoadModelAsync(char* input, void (*callBack)(void* data, Model* model), void* callBackData) {
+	if (callBack == NULL) {
+		// ?
+		return -1;
+	}
+	char* nativeDir = DirToNative(input);
+	FILE* f = fopen(nativeDir, "rb");
+	free(nativeDir);
+	if (f == NULL) {
+		callBack(callBackData, NULL);
+		return -1;
+	}
+	fseek(f, 0, SEEK_END);
+	int fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	Model* retValue = (Model*)malloc(fsize);
+
+	ModelCallbackData* cbd = (ModelCallbackData*)malloc(sizeof(ModelCallbackData));
+	cbd->f = f;
+	cbd->model = retValue;
+	cbd->callBack = callBack;
+	cbd->callBackData = callBackData;
+	cbd->texDir = malloc(strlen(input) + 1);
+	strcpy(cbd->texDir, input);
+
+	return fread_Async((void*)retValue, fsize, 1, f, LoadModelAsyncCallback, cbd);
+}
+
+void LoadTextureFromQueue();
+
+void UpdateTextureQueue() {
+	TextureQueue* tmp = firstTextureQueue;
+	firstTextureQueue = firstTextureQueue->next;
+	if (firstTextureQueue != NULL)
+		firstTextureQueue->prev = NULL;
+	free(tmp->textureToLoad);
+	free(tmp);
+	if (firstTextureQueue != NULL)
+		LoadTextureFromQueue();
+}
+
+void TextureAsyncCallback(void* data, bool success) {
+	TextureQueue* tq = (TextureQueue*)data;
+	fclose(tq->f);
+	// once more...!
+	Texture* tex = startTexture.next;
+	while (tex != NULL) {
+		if (strcmp(tq->textureToLoad, tex->name) == 0) {
+			tq->callBack(tq->callBackData, tex);
+			free(tq->tex);
+			UpdateTextureQueue();
+			return;
+		}
+		tex = tex->next;
+	}
+
+	// okay, we're good, initialize the texture properly
+	LoadTextureFromRAM(tq->tex, tq->upload, tq->textureToLoad);
+
+	tq->callBack(tq->callBackData, tq->tex);
+	UpdateTextureQueue();
+}
+
+void LoadTextureFromQueue() {
+	Texture* tex = startTexture.next;
+	while (tex != NULL) {
+		if (strcmp(firstTextureQueue->textureToLoad, tex->name) == 0) {
+			firstTextureQueue->callBack(firstTextureQueue->callBackData, tex);
+			UpdateTextureQueue();
+			return;
+		}
+		tex = tex->next;
+	}
+	FILE* f = fopen(firstTextureQueue->textureToLoad, "rb");
+	if (f == NULL) {
+		firstTextureQueue->callBack(firstTextureQueue->callBackData, NULL);
+		UpdateTextureQueue();
+		return;
+	}
+	fseek(f, 0, SEEK_END);
+	int fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	Texture* newTex = (Texture*)malloc(fsize);
+	firstTextureQueue->f = f;
+	firstTextureQueue->tex = newTex;
+	fread_Async(newTex, fsize, 1, f, TextureAsyncCallback, firstTextureQueue);
+}
+
+void LoadTextureAsync(char* input, bool upload, void (*callBack)(void* data, Texture* texture), void* callBackData) {
+	if (callBack == NULL) {
+		// ?
+		return;
+	}
+	Texture* tex = startTexture.next;
+	while (tex != NULL) {
+		if (strcmp(input, tex->name) == 0) {
+			callBack(callBackData, tex);
+			return;
+		}
+		tex = tex->next;
+	}
+
+	// okay, so this is a little dumb, but we don't want to repeatedly load textures we already have loaded. so, we set up a new queue here.
+	// if there's no textures currently loading, we go ahead. otherwise, we add to the queue.
+	// we have this in a custom queue rather than in the texture itself so that we can mix and match async texture loading and synchronous texture loading
+	TextureQueue* newQueue = (TextureQueue*)malloc(sizeof(TextureQueue));
+	newQueue->textureToLoad = DirToNative(input);
+	newQueue->callBack = callBack;
+	newQueue->upload = upload;
+	newQueue->callBackData = callBackData;
+	newQueue->next = NULL;
+	newQueue->prev = NULL;
+	if (firstTextureQueue != NULL) {
+		TextureQueue* tq = firstTextureQueue;
+		while (tq->next != NULL) {
+			tq = tq->next;
+		}
+		tq->next = newQueue;
+		newQueue->prev = tq;
+	}
+	else {
+		firstTextureQueue = newQueue;
+		LoadTextureFromQueue();
+	}
+
 }
 
 #ifndef _NOTDS
@@ -773,6 +1009,63 @@ void UploadTexture(Texture* input) {
 	input->uploaded = true;
 }
 
+void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
+	char* input = name;
+
+	int flushRange = 0x30;
+
+	int texMultiplier = 1 * 4096;
+
+	switch (newTex->type) {
+	case 1:
+		texMultiplier = 1 * 4096;
+		flushRange += 32 * 2;
+		break;
+	case 2:
+		texMultiplier = 1 * 4096 / 4;
+		flushRange += 4 * 2;
+		break;
+	case 3:
+		texMultiplier = 1 * 4096 / 2;
+		flushRange += 16 * 2;
+		break;
+	case 4:
+		texMultiplier = 1 * 4096;
+		flushRange += 256 * 2;
+		break;
+	case 6:
+		texMultiplier = 1 * 4096;
+		flushRange += 8 * 2;
+		break;
+	case 7:
+	case 8:
+		texMultiplier = 2 * 4096;
+		break;
+	}
+
+	int width = Pow(2 * 4096, (newTex->width + 3) * 4096);
+	int height = Pow(2 * 4096, (newTex->height + 3) * 4096);
+
+	flushRange += mulf32(width, mulf32(height, texMultiplier)) / 4096;
+
+	DC_FlushRange(newTex, flushRange);
+	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
+	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
+	if (upload) {
+		UploadTexture(newTex);
+	}
+	// save the name
+	newTex->name = malloc(strlen(input) + 1);
+	strcpy(newTex->name, input);
+	// place in linked list
+	if (startTexture.next != NULL) {
+		startTexture.next->prev = newTex;
+	}
+	newTex->next = startTexture.next;
+	startTexture.next = newTex;
+	newTex->prev = &startTexture;
+}
+
 Texture *LoadTexture(char *input, bool upload) {
 	// first check if we have the texture cached
 	Texture *tex = startTexture.next;
@@ -793,22 +1086,7 @@ Texture *LoadTexture(char *input, bool upload) {
 	Texture *newTex = malloc(fsize);
 	fread_MusicYielding(newTex, fsize, 1, f);
 	fclose(f);
-	DC_FlushRange(newTex, fsize);
-	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
-	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
-	if (upload) {
-		UploadTexture(newTex);
-	}
-	// save the name
-	newTex->name = malloc(strlen(input) + 1);
-	strcpy(newTex->name, input);
-	// place in linked list
-	if (startTexture.next != NULL) {
-		startTexture.next->prev = newTex;
-	}
-	newTex->next = startTexture.next;
-	startTexture.next = newTex;
-	newTex->prev = &startTexture;
+	LoadTextureFromRAM(newTex, upload, input);
 	return newTex;
 }
 
@@ -851,7 +1129,7 @@ TextureRGBA DecodeColor(u16 color) {
 	return retValue;
 }
 
-Convert32Palette(Texture *newTex, TextureRGBA *nativeColors, int width, int height) {
+void Convert32Palette(Texture *newTex, TextureRGBA *nativeColors, int width, int height) {
 	TextureRGBA convertedPalette[32];
 	for (int i = 0; i < 32; ++i) {
 		convertedPalette[i] = DecodeColor(newTex->palette[i]);
@@ -867,7 +1145,7 @@ Convert32Palette(Texture *newTex, TextureRGBA *nativeColors, int width, int heig
 	}
 }
 
-Convert256Palette(unsigned char* image, u16* palette, TextureRGBA* nativeColors, int width, int height) {
+void Convert256Palette(unsigned char* image, u16* palette, TextureRGBA* nativeColors, int width, int height) {
 	TextureRGBA convertedPalette[256];
 	for (int i = 0; i < 256; ++i) {
 		convertedPalette[i] = DecodeColor(palette[i]);
@@ -884,7 +1162,7 @@ Convert256Palette(unsigned char* image, u16* palette, TextureRGBA* nativeColors,
 	}
 }
 
-Convert16Palette(Texture* newTex, TextureRGBA* nativeColors, int width, int height) {
+void Convert16Palette(Texture* newTex, TextureRGBA* nativeColors, int width, int height) {
 	TextureRGBA convertedPalette[16];
 	for (int i = 0; i < 16; ++i) {
 		convertedPalette[i] = DecodeColor(newTex->palette[i]);
@@ -992,6 +1270,27 @@ void UploadTexture(Texture* input) {
 	input->uploaded = true;
 }
 
+void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
+	char* input = name;
+	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
+	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
+
+	// save the name
+	newTex->name = malloc(strlen(input) + 1);
+	strcpy(newTex->name, input);
+	// place in linked list
+	if (startTexture.next != NULL) {
+		startTexture.next->prev = newTex;
+	}
+	newTex->next = startTexture.next;
+	startTexture.next = newTex;
+	newTex->prev = &startTexture;
+
+	if (upload) {
+		UploadTexture(newTex);
+	}
+}
+
 Texture* LoadTexture(char* input, bool upload) {
 	// "upload" not used on PC sowwy
 	// first check if we have the texture cached
@@ -1015,23 +1314,8 @@ Texture* LoadTexture(char* input, bool upload) {
 	Texture* newTex = malloc(fsize);
 	fread_MusicYielding(newTex, fsize, 1, f);
 	fclose(f);
-	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
-	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
-
-	// save the name
-	newTex->name = malloc(strlen(input) + 1);
-	strcpy(newTex->name, input);
-	// place in linked list
-	if (startTexture.next != NULL) {
-		startTexture.next->prev = newTex;
-	}
-	newTex->next = startTexture.next;
-	startTexture.next = newTex;
-	newTex->prev = &startTexture;
-
-	if (upload) {
-		UploadTexture(newTex);
-	}
+	
+	LoadTextureFromRAM(newTex, upload, input);
 
 	return newTex;
 }
@@ -1382,6 +1666,24 @@ void SetAmbientColor(int color) {
 #endif
 }
 
+void LoadAnimationFromRAM(Animation* anim) {
+	for (int i = 0; i < anim->keyframeSetCount; ++i) {
+		anim->sets[i] = (KeyframeSet*)((uint)anim->sets[i] + (uint)anim);
+	}
+#ifdef _NOTDS
+	for (int i = 0; i < anim->keyframeSetCount; ++i) {
+		for (int j = 0; j < anim->sets[i]->keyframeCount; ++j) {
+			anim->sets[i]->keyframes[j].data.rotation.x = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.x);
+			anim->sets[i]->keyframes[j].data.rotation.y = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.y);
+			anim->sets[i]->keyframes[j].data.rotation.z = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.z);
+			anim->sets[i]->keyframes[j].data.rotation.w = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.w);
+			anim->sets[i]->keyframes[j].frame = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].frame);
+		}
+	}
+	anim->lastFrame = Fixed32ToNative(*(int*)&anim->lastFrame);
+#endif
+}
+
 Animation *LoadAnimation(char *input) {
 	char* fileDir = DirToNative(input);
 	FILE *f = fopen(fileDir, "rb");
@@ -1394,22 +1696,46 @@ Animation *LoadAnimation(char *input) {
 	fseek(f, 0, SEEK_SET);
 	Animation *retValue = malloc(fsize);
 	fread_MusicYielding(retValue, fsize, 1, f);
-	for (int i = 0; i < retValue->keyframeSetCount; ++i) {
-		retValue->sets[i] = (KeyframeSet*)((uint)retValue->sets[i] + (uint)retValue);
-	}
-#ifdef _NOTDS
-	for (int i = 0; i < retValue->keyframeSetCount; ++i) {
-		for (int j = 0; j < retValue->sets[i]->keyframeCount; ++j) {
-			retValue->sets[i]->keyframes[j].data.rotation.x = Fixed32ToNative(*(int*)&retValue->sets[i]->keyframes[j].data.rotation.x);
-			retValue->sets[i]->keyframes[j].data.rotation.y = Fixed32ToNative(*(int*)&retValue->sets[i]->keyframes[j].data.rotation.y);
-			retValue->sets[i]->keyframes[j].data.rotation.z = Fixed32ToNative(*(int*)&retValue->sets[i]->keyframes[j].data.rotation.z);
-			retValue->sets[i]->keyframes[j].data.rotation.w = Fixed32ToNative(*(int*)&retValue->sets[i]->keyframes[j].data.rotation.w);
-			retValue->sets[i]->keyframes[j].frame = Fixed32ToNative(*(int*)&retValue->sets[i]->keyframes[j].frame);
-		}
-	}
-	retValue->lastFrame = Fixed32ToNative(*(int*)&retValue->lastFrame);
-#endif
+	fclose(f);
+	LoadAnimationFromRAM(retValue);
 	return retValue;
+}
+
+void LoadAnimationAsyncCallback(void* data, bool success) {
+	AnimationCallbackData* acd = (AnimationCallbackData*)data;
+	fclose(acd->f);
+	if (!success) {
+		acd->callBack(acd->callBackData, NULL);
+		free(acd->anim);
+	}
+	else {
+		acd->callBack(acd->callBackData, acd->anim);
+	}
+	free(acd);
+}
+
+int LoadAnimationAsync(char* input, void (*callBack)(void* data, Animation* anim), void* callBackData) {
+	if (callBack == NULL) {
+		// ?
+		return -1;
+	}
+	char* fileDir = DirToNative(input);
+	FILE* f = fopen(fileDir, "rb");
+	free(fileDir);
+	if (f == NULL) {
+		callBack(callBackData, NULL);
+		return -1;
+	}
+	fseek(f, 0, SEEK_END);
+	int fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	Animation* retValue = malloc(fsize);
+	AnimationCallbackData* acd = malloc(sizeof(AnimationCallbackData));
+	acd->f = f;
+	acd->anim = retValue;
+	acd->callBack = callBack;
+	acd->callBackData = callBackData;
+	return fread_Async(retValue, fsize, 1, f, LoadAnimationAsyncCallback, acd);
 }
 
 Animator *CreateAnimator(Model *referenceModel) {
@@ -1746,6 +2072,11 @@ void UploadSprite(Sprite* input, bool sub, bool BG) {
 	input->sub = sub;
 }
 
+void LoadSpriteFromRAM(Sprite* sprite) {
+	sprite->image = (char*)((uint)sprite->image + (uint)sprite);
+	sprite->palette = (unsigned short*)((uint)sprite->palette + (uint)sprite);
+}
+
 Sprite* LoadSprite(char* input, bool sub, bool upload) {
 	char* newInput = DirToNative(input);
 	FILE* f = fopen(newInput, "rb");
@@ -1756,16 +2087,60 @@ Sprite* LoadSprite(char* input, bool sub, bool upload) {
 	fseek(f, 0, SEEK_END);
 	int fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	Sprite* newSprite = malloc(fsize);
+	Sprite* newSprite = (Sprite*)malloc(fsize);
 	fread_MusicYielding(newSprite, fsize, 1, f);
 	fclose(f);
-	newSprite->image = (char*)((uint)newSprite->image + (uint)newSprite);
-	newSprite->palette = (unsigned short*)((uint)newSprite->palette + (uint)newSprite);
+	LoadSpriteFromRAM(newSprite);
 	// that's it really, not much setup to be done here
 	if (upload) {
 		UploadSprite(newSprite, sub, false);
 	}
 	return newSprite;
+}
+
+void LoadSpriteAsyncCallback(void* data, bool success) {
+	SpriteCallbackData* scd = (SpriteCallbackData*)data;
+	fclose(scd->f);
+	if (!success) {
+		free(scd->sprite);
+		scd->callBack(scd->callBackData, NULL);
+	}
+	else {
+		LoadSpriteFromRAM(scd->sprite);
+		if (scd->upload) {
+			UploadSprite(scd->sprite, scd->sub, false);
+		}
+		scd->callBack(scd->callBackData, scd->sprite);
+	}
+	free(scd);
+}
+
+int LoadSpriteAsync(char* input, bool sub, bool upload, void (*callBack)(void* data, Sprite* sprite), void* callBackData) {
+	if (callBack == NULL) {
+		// ?
+		return -1;
+	}
+	char* newInput = DirToNative(input);
+	FILE* f = fopen(newInput, "rb");
+	free(newInput);
+	if (f == NULL) {
+		callBack(callBackData, NULL);
+		return -1;
+	}
+	fseek(f, 0, SEEK_END);
+	int fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	Sprite* newSprite = (Sprite*)malloc(fsize);
+
+	SpriteCallbackData* scd = (SpriteCallbackData*)malloc(sizeof(SpriteCallbackData));
+	scd->callBack = callBack;
+	scd->callBackData = callBackData;
+	scd->sprite = newSprite;
+	scd->sub = sub;
+	scd->upload = upload;
+	scd->f = f;
+
+	fread_Async(newSprite, fsize, 1, f, LoadSpriteAsyncCallback, scd);
 }
 
 void UnloadSprite(Sprite* input) {

@@ -10,11 +10,15 @@ int currSoundId;
 SoundEffect* currMusic;
 unsigned char* mainMusic;
 int currMusicId = -1;
+typedef struct {
+	FILE* f;
+	void (*callBack)(void* data, SoundEffect* sound);
+	void* callBackData;
+	SoundEffect* se;
+}  AsyncWavData;
 #ifndef _NOTDS
-#include <maxmod9.h>
 #include <nds/ndstypes.h>
 #include "sdmath.h"
-mm_stream musicStream;
 
 bool playingMusic;
 PlayingSoundData currMusicData;
@@ -379,6 +383,49 @@ void DestroySoundEffect(SoundEffect* sound) {
 		free(sound->samples);
 	}
 	free(sound);
+}
+
+void LoadWavAsyncCallback(void* data, bool success) {
+	AsyncWavData* awd = (AsyncWavData*)data;
+	fclose(awd->f);
+	if (!success) {
+		free(awd->se->samples);
+		free(awd->se);
+		awd->se = NULL;
+	}
+	awd->callBack(awd->callBackData, awd->se);
+	free(awd);
+}
+
+int LoadWavAsync(char* input, void (*callBack)(void* data, SoundEffect* sound), void* callBackData) {
+	if (callBack == NULL) {
+		// ?
+		return -1;
+	}
+	char* fileName = DirToNative(input);
+	FILE* f = fopen(fileName, "rb");
+	free(fileName);
+	if (f == NULL) {
+		callBack(callBackData, NULL);
+		return -1;
+	}
+
+	WavHeader wavHeader;
+	fread_MusicYielding(&wavHeader, sizeof(wavHeader), 1, f);
+	SoundEffect* audioInfo = (SoundEffect*)malloc(sizeof(SoundEffect));
+	audioInfo->sampleRate = wavHeader.sampleRate;
+	audioInfo->dataSize = wavHeader.dataSize;
+	audioInfo->stereo = wavHeader.channelCount == 2;
+	audioInfo->bytesPerSample = wavHeader.bitsPerSample / 8;
+	audioInfo->samples = (unsigned char*)malloc(wavHeader.dataSize);
+
+	AsyncWavData* awd = (AsyncWavData*)malloc(sizeof(AsyncWavData));
+	awd->f = f;
+	awd->callBack = callBack;
+	awd->callBackData = callBackData;
+	awd->se = audioInfo;
+
+	return fread_Async(audioInfo->samples, wavHeader.dataSize, 1, f, LoadWavAsyncCallback, awd);
 }
 
 #ifdef _WIN32

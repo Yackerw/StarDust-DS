@@ -182,7 +182,11 @@ typedef struct {
 
 extern Texture startTexture;
 
+void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, void (*asyncCallback)(void* data), void* asyncCallbackData);
+
 Model *LoadModel(char *input);
+
+int LoadModelAsync(char* input, void (*callBack)(void* data, Model* model), void* callBackData);
 
 void CacheModel(Model* reference);
 
@@ -192,7 +196,11 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats);
 
 void UploadTexture(Texture* input);
 
+void LoadTextureFromRAM(Texture* input, bool upload, char* name);
+
 Texture *LoadTexture(char *input, bool upload);
+
+void LoadTextureAsync(char* input, bool upload, void (*callBack)(void* data, Texture* texture), void* callBackData);
 
 void UnloadTexture(Texture* tex);
 
@@ -204,7 +212,11 @@ void SetAmbientColor(int color);
 
 void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *animator);
 
+void LoadAnimationFromRAM(Animation* anim);
+
 Animation *LoadAnimation(char *input);
+
+int LoadAnimationAsync(char* input, void (*callBack)(void* data, Animation* anim), void* callBackData);
 
 Animator *CreateAnimator(Model *referenceModel);
 

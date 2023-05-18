@@ -74,6 +74,8 @@ SoundEffect *LoadWav(char* input);
 
 SoundEffect* LoadWavStreamed(char* input);
 
+int LoadWavAsync(char* input, void (*callBack)(void* data, SoundEffect* sound), void* callBackData);
+
 void UpdateMusicBuffer();
 
 void DestroySoundEffect(SoundEffect* sound);

@@ -9,6 +9,7 @@
 #include "sdobject.h"
 #include "sddelta.h"
 #include "sdsound.h"
+#include "sdfile.h"
 
 #ifdef _WIN32
 
@@ -102,6 +103,7 @@ int main() {
 #ifdef _WIN32
 	WindowsInitialization();
 #endif
+	InitializeAsyncFiles();
 
 	InitializeSubBG();
 	
@@ -120,11 +122,10 @@ int main() {
 
 		// flush screen
 #ifndef _NOTDS
-		glFlush(0);
+		// this handles glFlush(0) and swiWaitForVBlank() for us!
+		AsyncFileHandler();
 		glClearDepth(GL_MAX_DEPTH); // reset depth buffer, good idea to set to GL_MAX_DEPTH
 		UpdateMusicBuffer();
-		// v-sync
-		swiWaitForVBlank();
 		oamUpdate(&oamMain);
 		oamUpdate(&oamSub);
 		bgUpdate();
