@@ -124,6 +124,7 @@ typedef struct {
 	int itemCount;
 	AnimatorItem *items;
 	bool loop;
+	bool paused;
 } Animator;
 
 typedef struct Texture Texture;
@@ -156,7 +157,7 @@ struct SDMaterial {
 	bool backFaceCulling;
 	bool lit;
 	char specular;
-	char padding2;
+	bool quad;
 	f32 texOffsX;
 	f32 texOffsY;
 	f32 texScaleX;
@@ -189,6 +190,9 @@ Model *LoadModel(char *input);
 int LoadModelAsync(char* input, void (*callBack)(void* data, Model* model), void* callBackData);
 
 void CacheModel(Model* reference);
+
+// does not work with code generated models
+Model* FreeModelKeepCache(Model* model);
 
 void UpdateModel(Model* model);
 
@@ -246,11 +250,7 @@ void InitializeSubBG();
 
 void UploadSprite(Sprite* sprite, bool sub, bool BG);
 
-void LoadSpriteFromRAM(Sprite* sprite);
-
 Sprite* LoadSprite(char* input, bool sub, bool upload);
-
-int LoadSpriteAsync(char* input, bool sub, bool upload, void (*callBack)(void* data, Sprite* sprite), void* callbackData);
 
 void UnloadSprite(Sprite* sprite);
 

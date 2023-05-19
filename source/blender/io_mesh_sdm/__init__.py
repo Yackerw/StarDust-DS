@@ -33,6 +33,7 @@ class submesh:
         self.matOffset = 0
         self.material = None
         self.matString = None
+        self.quad = False
 class optimized_obj:
     def __init__(self):
         self.type = -1
@@ -71,62 +72,124 @@ def optimize_mesh(mesh, ob):
         # TODO: get texture, color, etc
         currSubMesh = submesh()
         currSubMesh.material = material
+        currSubMesh.quad = True
+        retValue.subMeshes.append(currSubMesh)
+        # one more for triangle list
+        currSubMesh = submesh()
+        currSubMesh.material = material
+        currSubMesh.quad = False
         retValue.subMeshes.append(currSubMesh)
         
     for tri in mesh.polygons:
-        for loop_ind in range(tri.loop_start, tri.loop_start + tri.loop_total):
-            # just add each vertex to a list
-            currVert = vertex()
-            currBlendVert = mesh.vertices[mesh.loops[loop_ind].vertex_index]
-            currVert.x = currBlendVert.co[0]
-            currVert.y = currBlendVert.co[1]
-            currVert.z = currBlendVert.co[2]
-            currVert.nx = mesh.loops[loop_ind].normal[0]
-            currVert.ny = mesh.loops[loop_ind].normal[1]
-            currVert.nz = mesh.loops[loop_ind].normal[2]
-            currVert.internalId = mesh.loops[loop_ind].vertex_index
-            # weights
-            maxRig = 0
-            if (len(currBlendVert.groups) > 0):
-                for group in currBlendVert.groups:
-                    if (group.weight > maxRig):
-                        currVert.rig = group.group
-                        maxRig = group.weight
-            # UV
-            if (mesh.uv_layers.active != None):
-                currVert.u = mesh.uv_layers.active.data[loop_ind].uv[0]
-                currVert.v = mesh.uv_layers.active.data[loop_ind].uv[1]
-            retValue.subMeshes[tri.material_index].verts.append(currVert)
+        if (tri.loop_total == 4):
+            for loop_ind in range(tri.loop_start, tri.loop_start + tri.loop_total):
+                # just add each vertex to a list
+                currVert = vertex()
+                currBlendVert = mesh.vertices[mesh.loops[loop_ind].vertex_index]
+                currVert.x = currBlendVert.co[0]
+                currVert.y = currBlendVert.co[1]
+                currVert.z = currBlendVert.co[2]
+                currVert.nx = mesh.loops[loop_ind].normal[0]
+                currVert.ny = mesh.loops[loop_ind].normal[1]
+                currVert.nz = mesh.loops[loop_ind].normal[2]
+                currVert.internalId = mesh.loops[loop_ind].vertex_index
+                # weights
+                maxRig = 0
+                if (len(currBlendVert.groups) > 0):
+                    for group in currBlendVert.groups:
+                        if (group.weight > maxRig):
+                            currVert.rig = group.group
+                            maxRig = group.weight
+                # UV
+                if (mesh.uv_layers.active != None):
+                    currVert.u = mesh.uv_layers.active.data[loop_ind].uv[0]
+                    currVert.v = mesh.uv_layers.active.data[loop_ind].uv[1]
+                retValue.subMeshes[tri.material_index * 2].verts.append(currVert)
+        else:
+            for loop_ind in range(tri.loop_start, tri.loop_start + 3):
+                # just add each vertex to a list
+                currVert = vertex()
+                currBlendVert = mesh.vertices[mesh.loops[loop_ind].vertex_index]
+                currVert.x = currBlendVert.co[0]
+                currVert.y = currBlendVert.co[1]
+                currVert.z = currBlendVert.co[2]
+                currVert.nx = mesh.loops[loop_ind].normal[0]
+                currVert.ny = mesh.loops[loop_ind].normal[1]
+                currVert.nz = mesh.loops[loop_ind].normal[2]
+                currVert.internalId = mesh.loops[loop_ind].vertex_index
+                # weights
+                maxRig = 0
+                if (len(currBlendVert.groups) > 0):
+                    for group in currBlendVert.groups:
+                        if (group.weight > maxRig):
+                            currVert.rig = group.group
+                            maxRig = group.weight
+                # UV
+                if (mesh.uv_layers.active != None):
+                    currVert.u = mesh.uv_layers.active.data[loop_ind].uv[0]
+                    currVert.v = mesh.uv_layers.active.data[loop_ind].uv[1]
+                retValue.subMeshes[(tri.material_index * 2) + 1].verts.append(currVert)
     
     # optimize uvs
     for subMesh in retValue.subMeshes:
         if (subMesh.material.active_texture != None and hasattr(subMesh.material.active_texture, 'image') and subMesh.material.active_texture.image != None):
-            for i in range(0, len(subMesh.verts), 3):
-                # we also invert the y axis here
-                subMesh.verts[i].u *= subMesh.material.active_texture.image.size[0]
-                subMesh.verts[i].v *= subMesh.material.active_texture.image.size[1]
-                subMesh.verts[i+1].u *= subMesh.material.active_texture.image.size[0]
-                subMesh.verts[i+1].v *= subMesh.material.active_texture.image.size[1]
-                subMesh.verts[i+2].u *= subMesh.material.active_texture.image.size[0]
-                subMesh.verts[i+2].v *= subMesh.material.active_texture.image.size[1]
-                subMesh.verts[i].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i].v
-                subMesh.verts[i+1].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+1].v
-                subMesh.verts[i+2].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+2].v
-                # re-center the triangles UVs onto the image
-                for j in range(0, 3):
-                    # multiplying by 2 to account for mirrored overflow UVs
-                    while (subMesh.verts[i+j].u > subMesh.material.active_texture.image.size[0]*2):
-                        for k in range(0, 3):
-                            subMesh.verts[i+k].u -= subMesh.material.active_texture.image.size[0]*2
-                    while (subMesh.verts[i+j].u < -subMesh.material.active_texture.image.size[0]*2):
-                        for k in range(0, 3):
-                            subMesh.verts[i+k].u += subMesh.material.active_texture.image.size[0]*2
-                    while (subMesh.verts[i+j].v > subMesh.material.active_texture.image.size[1]*2):
-                        for k in range(0, 3):
-                            subMesh.verts[i+k].v -= subMesh.material.active_texture.image.size[1]*2
-                    while (subMesh.verts[i+j].v < -subMesh.material.active_texture.image.size[1]*2):
-                        for k in range(0, 3):
-                            subMesh.verts[i+k].v += subMesh.material.active_texture.image.size[1]*2
+            if (subMesh.quad):
+                for i in range(0, len(subMesh.verts), 4):
+                    # we also invert the y axis here
+                    subMesh.verts[i].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i+1].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i+1].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i+2].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i+2].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i+3].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i+3].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i].v
+                    subMesh.verts[i+1].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+1].v
+                    subMesh.verts[i+2].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+2].v
+                    subMesh.verts[i+3].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+3].v
+                    # re-center the triangles UVs onto the image
+                    for j in range(0, 4):
+                        # multiplying by 2 to account for mirrored overflow UVs
+                        while (subMesh.verts[i+j].u > subMesh.material.active_texture.image.size[0]*2):
+                            for k in range(0, 4):
+                                subMesh.verts[i+k].u -= subMesh.material.active_texture.image.size[0]*2
+                        while (subMesh.verts[i+j].u < -subMesh.material.active_texture.image.size[0]*2):
+                            for k in range(0, 4):
+                                subMesh.verts[i+k].u += subMesh.material.active_texture.image.size[0]*2
+                        while (subMesh.verts[i+j].v > subMesh.material.active_texture.image.size[1]*2):
+                            for k in range(0, 4):
+                                subMesh.verts[i+k].v -= subMesh.material.active_texture.image.size[1]*2
+                        while (subMesh.verts[i+j].v < -subMesh.material.active_texture.image.size[1]*2):
+                            for k in range(0, 4):
+                                subMesh.verts[i+k].v += subMesh.material.active_texture.image.size[1]*2
+            else:
+                for i in range(0, len(subMesh.verts), 3):
+                    # we also invert the y axis here
+                    subMesh.verts[i].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i+1].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i+1].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i+2].u *= subMesh.material.active_texture.image.size[0]
+                    subMesh.verts[i+2].v *= subMesh.material.active_texture.image.size[1]
+                    subMesh.verts[i].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i].v
+                    subMesh.verts[i+1].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+1].v
+                    subMesh.verts[i+2].v = subMesh.material.active_texture.image.size[1] - subMesh.verts[i+2].v
+                    # re-center the triangles UVs onto the image
+                    for j in range(0, 3):
+                        # multiplying by 2 to account for mirrored overflow UVs
+                        while (subMesh.verts[i+j].u > subMesh.material.active_texture.image.size[0]*2):
+                            for k in range(0, 3):
+                                subMesh.verts[i+k].u -= subMesh.material.active_texture.image.size[0]*2
+                        while (subMesh.verts[i+j].u < -subMesh.material.active_texture.image.size[0]*2):
+                            for k in range(0, 3):
+                                subMesh.verts[i+k].u += subMesh.material.active_texture.image.size[0]*2
+                        while (subMesh.verts[i+j].v > subMesh.material.active_texture.image.size[1]*2):
+                            for k in range(0, 3):
+                                subMesh.verts[i+k].v -= subMesh.material.active_texture.image.size[1]*2
+                        while (subMesh.verts[i+j].v < -subMesh.material.active_texture.image.size[1]*2):
+                            for k in range(0, 3):
+                                subMesh.verts[i+k].v += subMesh.material.active_texture.image.size[1]*2
     
     # generic object transforms
     retValue.parent = ob.parent
@@ -315,8 +378,11 @@ def write_material_data(optObj, f, backfaceCulling):
             write_byte(f, 1)
         # specular amount
         write_byte(f, int(submesh.material.specular_intensity * 255));
-        # padding, maybe used for more material stuff in the future
-        write_byte(f, 0)
+        # determines whether or not submesh is quadrilateral
+        if (submesh.quad):
+            write_byte(f, 1)
+        else:
+            write_byte(f, 0)
         # texture offset and scale, for now 0 and 1
         write_float(f, 0)
         write_float(f, 0)
@@ -329,7 +395,7 @@ def write_material_data(optObj, f, backfaceCulling):
         write_float(f, 0)
         
 
-def write_some_data(context, filepath, auto_transform, backfaceCulling):
+def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons_type):
     print("running write_some_data...")
     f = open(filepath, 'wb')
     # version
@@ -348,12 +414,13 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling):
     if (modifierToRemove != None):
         newObj.modifiers.remove(modifierToRemove)
     mesh = newObj.to_mesh(scene=bpy.context.scene, apply_modifiers=True, settings='PREVIEW')
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-    # ?? python syntax is fucked
-    bmesh.ops.triangulate(bm, faces=bm.faces[:])
-    bm.to_mesh(mesh)
-    bm.free()
+    if (polygons_type == 'Triangles'):
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        # ?? python syntax is fucked
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        bm.to_mesh(mesh)
+        bm.free()
     mesh.calc_normals_split()
     
     boundsx = 0
@@ -553,18 +620,18 @@ class ExportSomeData(Operator, ExportHelper):
         default=True,
     )
 
-    type = EnumProperty(
-        name="Example Enum",
-        description="Choose between two items",
+    polygons_type = EnumProperty(
+        name="Polygon export type",
+        description="Quads will not export N-Gons properly, but is more efficient to render. May also result in strange deformation for rigged models.",
         items=(
-            ('OPT_A', "First Option", "Description one"),
-            ('OPT_B', "Second Option", "Description two"),
+            ('Triangles', "Triangles", "Export whole model as triangles"),
+            ('Quads', "Quads", "Export only triangles & Quads"),
         ),
-        default='OPT_A',
+        default='Quads',
     )
 
     def execute(self, context):
-        return write_some_data(context, self.filepath, self.auto_transform, self.backface_culling)
+        return write_some_data(context, self.filepath, self.auto_transform, self.backface_culling, self.polygons_type)
 
 
 # Only needed if you want to add into a dynamic menu

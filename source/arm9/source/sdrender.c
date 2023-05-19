@@ -310,14 +310,36 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	currVert = 0;
 	currHeader = retValue->vertexGroups;
 	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		int* tris = (int*)malloc(sizeof(int) * currHeader->count);
-		for (int j = 0; j < currHeader->count; ++j) {
-			tris[j] = currVert;
-			++currVert;
+		if (!model->defaultMats[currHeader->material].quad) {
+			int* tris = (int*)malloc(sizeof(int) * currHeader->count);
+			for (int j = 0; j < currHeader->count; ++j) {
+				tris[j] = currVert;
+				++currVert;
+			}
+			SetSubmeshTriangles(nativeModel, i, tris, currHeader->count);
+			free(tris);
+			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
 		}
-		SetSubmeshTriangles(nativeModel, i, tris, currHeader->count);
-		free(tris);
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		else {
+			int* tris = (int*)malloc(sizeof(int) * ((currHeader->count / 4) * 6));
+			int triPos = 0;
+			int quadTracker = 0;
+			for (int j = 0; j < currHeader->count; ++j) {
+				tris[triPos] = currVert;
+				++currVert;
+				++triPos;
+				++quadTracker;
+				if (quadTracker % 4 == 0) {
+					tris[triPos] = currVert - 4;
+					++triPos;
+					tris[triPos] = currVert - 2;
+					++triPos;
+				}
+			}
+			SetSubmeshTriangles(nativeModel, i, tris, ((currHeader->count / 4) * 6));
+			free(tris);
+			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		}
 	}
 	UpdateMesh(nativeModel);
 	retValue->NativeModel = nativeModel;
@@ -352,6 +374,32 @@ Model *LoadModel(char *input) {
 	fread_MusicYielding(retValue, fsize, 1, f);
 	fclose(f);
 	SetupModelFromMemory(retValue, input, false, NULL, NULL);
+	return retValue;
+}
+
+Model* FreeModelKeepCache(Model* model) {
+	if (model->NativeModel == NULL) {
+		// no cache...
+		return model;
+	}
+	// duplicate materials
+	SDMaterial* mats = (SDMaterial*)malloc(sizeof(SDMaterial) * model->materialCount);
+	memcpy(mats, model->defaultMats, sizeof(SDMaterial) * model->materialCount);
+	printf("%i\n", model->materialCount);
+	Model* retValue = (Model*)calloc(sizeof(Model), 1);
+	retValue->defaultMats = mats;
+	retValue->materialCount = model->materialCount;
+	retValue->NativeModel = model->NativeModel;
+	retValue->boundsMin = model->boundsMin;
+	retValue->boundsMax = model->boundsMax;
+	retValue->defaultOffset = model->defaultOffset;
+	retValue->defaultScale = model->defaultScale;
+	retValue->skeletonCount = model->skeletonCount;
+	if (retValue->skeletonCount != 0) {
+		retValue->skeleton = (Bone*)malloc(sizeof(Bone) * retValue->skeletonCount);
+		memcpy(retValue->skeleton, model->skeleton, sizeof(Bone) * retValue->skeletonCount);
+	}
+	free(model);
 	return retValue;
 }
 
@@ -504,10 +552,150 @@ void LoadTextureAsync(char* input, bool upload, void (*callBack)(void* data, Tex
 unsigned int FIFOLookup[] = { FIFO_COMMAND_PACK(FIFO_NORMAL, FIFO_TEX_COORD, FIFO_VERTEX16, FIFO_NORMAL), FIFO_COMMAND_PACK(FIFO_TEX_COORD, FIFO_VERTEX16, FIFO_NORMAL, FIFO_TEX_COORD), FIFO_COMMAND_PACK(FIFO_VERTEX16, FIFO_NORMAL, FIFO_TEX_COORD, FIFO_VERTEX16) };
 #endif
 
+#define FIFO_MTX_RESTORE 0x50 >> 2
+
+#ifndef _NOTDS
+void CacheRiggedModel(Model* reference) {
+	if (reference->skeletonCount > 30) {
+		return;
+	}
+	DSNativeModel dsnm;
+	dsnm.FIFOCount = reference->vertexGroupCount;
+	dsnm.FIFOBatches = (unsigned int**)malloc(sizeof(unsigned int*) * reference->vertexGroupCount);
+	VertexHeader* currHeader = &reference->vertexGroups[0];
+	for (int i = 0; i < reference->vertexGroupCount; ++i) {
+		int vertCount = currHeader->count;
+		if (vertCount == 0) {
+			dsnm.FIFOBatches[i] = NULL;
+			uint toAdd = (sizeof(Vertex) * (currHeader->count));
+			currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+			continue;
+		}
+		// ack...
+		int FIFOCount;
+		int NOPCount;
+		FIFOCount = vertCount * 3 + 1;
+		// iterate over verts as well and add 1 for each bone change
+		Vertex* vertices = &currHeader->vertices;
+		int currBone = -1;
+		int FIFOCountLaterAddition = 0;
+		for (int j = 0; j < vertCount; ++j) {
+			if (vertices[j].boneID != currBone) {
+				++FIFOCount;
+				++FIFOCountLaterAddition;
+				currBone = vertices[j].boneID;
+			}
+		}
+		NOPCount = 4 - (FIFOCount % 4);
+		if (NOPCount == 4) {
+			NOPCount = 0;
+		}
+		FIFOCount /= 4;
+		if (NOPCount != 0) {
+			FIFOCount += 1;
+		}
+		int FIFOIterator = FIFOCount;
+		// agghh
+		FIFOCount += FIFOCountLaterAddition + vertCount * 4 + 1;
+		// now generate FIFO batch
+		unsigned int* FIFOBatch = (unsigned int*)malloc(sizeof(unsigned int) * (FIFOCount + 1));
+		int currVert = 0;
+		int FIFOBatchPosition = 6;
+		// FIFO size
+		FIFOBatch[0] = FIFOCount;
+		// initial one with GFX BEGIN and such
+		FIFOBatch[1] = FIFO_COMMAND_PACK(FIFO_BEGIN, FIFO_MTX_RESTORE, FIFO_NORMAL, FIFO_TEX_COORD);
+		// pack the data
+		if (reference->defaultMats[currHeader->material].quad) {
+			FIFOBatch[2] = GL_QUAD;
+		}
+		else {
+			FIFOBatch[2] = GL_TRIANGLE;
+		}
+		FIFOBatch[3] = vertices[0].boneID;
+		FIFOBatch[4] = vertices[0].normal;
+		FIFOBatch[5] = TEXTURE_PACK(vertices[0].u, vertices[0].v);
+
+		int subVert = 3;
+		currBone = vertices[0].boneID;
+		while (currVert < vertCount) {
+			unsigned char toPack[4];
+			int storedBatchPosition = FIFOBatchPosition;
+			++FIFOBatchPosition;
+			for (int k = 0; k < 4; ++k) {
+				switch (subVert) {
+				case 1:
+					if (currVert < vertCount) {
+						toPack[k] = FIFO_NORMAL;
+						FIFOBatch[FIFOBatchPosition] = vertices[currVert].normal;
+					}
+					else {
+						toPack[k] = FIFO_NOP;
+					}
+					break;
+				case 2:
+					if (currVert < vertCount) {
+						toPack[k] = FIFO_TEX_COORD;
+						FIFOBatch[FIFOBatchPosition] = TEXTURE_PACK(vertices[currVert].u, vertices[currVert].v);
+					}
+					else {
+						toPack[k] = FIFO_NOP;
+					}
+					break;
+				case 3:
+					if (currVert < vertCount) {
+						toPack[k] = FIFO_VERTEX16;
+						FIFOBatch[FIFOBatchPosition] = VERTEX_PACK(vertices[currVert].x, vertices[currVert].y);
+						++FIFOBatchPosition;
+						FIFOBatch[FIFOBatchPosition] = vertices[currVert].z;
+						++currVert;
+						subVert = -1;
+					}
+					else {
+						toPack[k] = FIFO_NOP;
+					}
+					break;
+				case 0:
+					if (currVert < vertCount) {
+						if (vertices[currVert].boneID != currBone) {
+							toPack[k] = FIFO_MTX_RESTORE;
+							FIFOBatch[FIFOBatchPosition] = vertices[currVert].boneID;
+							currBone = vertices[currVert].boneID;
+						}
+						else {
+							--k;
+							++subVert;
+							continue;
+						}
+					}
+					else {
+						toPack[k] = FIFO_NOP;
+					}
+					break;
+				}
+				++subVert;
+				++FIFOBatchPosition;
+			}
+			FIFOBatch[storedBatchPosition] = FIFO_COMMAND_PACK(toPack[0], toPack[1], toPack[2], toPack[3]);
+		}
+		dsnm.FIFOBatches[i] = FIFOBatch;
+		uint toAdd = (sizeof(Vertex) * (currHeader->count));
+		currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+	}
+	reference->NativeModel = malloc(sizeof(DSNativeModel));
+	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
+	dsnmptr[0] = dsnm;
+}
+#endif
+
 void CacheModel(Model* reference) {
 #ifdef _NOTDS
 	return;
 #else
+	if (reference->skeletonCount > 0) {
+		CacheRiggedModel(reference);
+		return;
+	}
 	DSNativeModel dsnm;
 	dsnm.FIFOCount = reference->vertexGroupCount;
 	dsnm.FIFOBatches = (unsigned int**)malloc(sizeof(unsigned int*) * reference->vertexGroupCount);
@@ -550,7 +738,12 @@ void CacheModel(Model* reference) {
 		// initial one with GFX BEGIN and such
 		FIFOBatch[1] = FIFO_COMMAND_PACK(FIFO_BEGIN, FIFO_NORMAL, FIFO_TEX_COORD, FIFO_VERTEX16);
 		// pack the data
-		FIFOBatch[2] = GL_TRIANGLE;
+		if (reference->defaultMats[currHeader->material].quad) {
+			FIFOBatch[2] = GL_QUAD;
+		}
+		else {
+			FIFOBatch[2] = GL_TRIANGLE;
+		}
 		FIFOBatch[3] = currVerts[0].normal;
 		FIFOBatch[4] = TEXTURE_PACK(currVerts[0].u, currVerts[0].v);
 		FIFOBatch[5] = VERTEX_PACK(currVerts[0].x, currVerts[0].y);
@@ -852,43 +1045,69 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 		glPushMatrix();
 	}
 	glMatrixMode(GL_MODELVIEW);
-	int currBone = -1;
-	const int vertGroupCount = model->vertexGroupCount;
-	for (int i = 0; i < vertGroupCount; ++i) {
-		if (currVertexGroup->materialChange) {
-			SetupMaterial(&mats[currVertexGroup->material], true);
-			currBone = -1;
-		}
-		glBegin(GL_TRIANGLE);
-		const int vertCount = currVertexGroup->count;
-		for (int i2 = 0; i2 < vertCount; ++i2) {
-			const Vertex *currVert = &((&(currVertexGroup->vertices))[i2]);
-			if (currVert->boneID != currBone) {
-				currBone = currVert->boneID;
-				if (currBone > 30) {
-					glLoadMatrix4x4(matrix);
-					// get all parents
-					int parentQueue[128];
-					int parentQueueSlot = 0;
-					for (int parent = model->skeleton[currBone].parent; parent != -1; parent = model->skeleton[parent].parent) {
-						parentQueue[parentQueueSlot] = parent;
-						++parentQueueSlot;
-					}
-					for (int parent = parentQueueSlot - 1; parent >= 0; --parent) {
-						glMultMatrix4x4(&animator->items[parentQueue[parent]].matrix);
-					}
-					glMultMatrix4x4(&animator->items[currBone].matrix);
-					glMultMatrix4x4(&model->skeleton[currBone].inverseMatrix);
-				} else {
-					glRestoreMatrix(currBone);
-				}
+	if (model->NativeModel == NULL) {
+		int currBone = -1;
+		const int vertGroupCount = model->vertexGroupCount;
+		for (int i = 0; i < vertGroupCount; ++i) {
+			if (currVertexGroup->materialChange) {
+				SetupMaterial(&mats[currVertexGroup->material], true);
+				currBone = -1;
 			}
-			glNormal(currVert->normal);
-			glTexCoord2t16(currVert->u, currVert->v);
-			glVertex3v16(currVert->x, currVert->y, currVert->z);
+			if (model->defaultMats[currVertexGroup->material].quad) {
+				glBegin(GL_QUAD);
+			}
+			else {
+				glBegin(GL_TRIANGLE);
+			}
+			const int vertCount = currVertexGroup->count;
+			for (int i2 = 0; i2 < vertCount; ++i2) {
+				const Vertex* currVert = &((&(currVertexGroup->vertices))[i2]);
+				if (currVert->boneID != currBone) {
+					currBone = currVert->boneID;
+					if (currBone > 30) {
+						glLoadMatrix4x4(matrix);
+						// get all parents
+						int parentQueue[128];
+						int parentQueueSlot = 0;
+						for (int parent = model->skeleton[currBone].parent; parent != -1; parent = model->skeleton[parent].parent) {
+							parentQueue[parentQueueSlot] = parent;
+							++parentQueueSlot;
+						}
+						for (int parent = parentQueueSlot - 1; parent >= 0; --parent) {
+							glMultMatrix4x4(&animator->items[parentQueue[parent]].matrix);
+						}
+						glMultMatrix4x4(&animator->items[currBone].matrix);
+						glMultMatrix4x4(&model->skeleton[currBone].inverseMatrix);
+					}
+					else {
+						glRestoreMatrix(currBone);
+					}
+				}
+				glNormal(currVert->normal);
+				glTexCoord2t16(currVert->u, currVert->v);
+				glVertex3v16(currVert->x, currVert->y, currVert->z);
+			}
+			currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			//glEnd();
 		}
-		currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex)*(currVertexGroup->count)));
-		//glEnd();
+	}
+	else {
+		DSNativeModel* dsnm = model->NativeModel;
+		for (int i = 0; i < dsnm->FIFOCount; ++i) {
+			// uh oh!! we can free except the cache!! assume in order then!!
+			if (currVertexGroup == NULL) {
+				SetupMaterial(&mats[i], true);
+			}
+			else {
+				SetupMaterial(&mats[currVertexGroup->material], true);
+			}
+			if (dsnm->FIFOBatches[i] != NULL) {
+				glCallList((u32*)dsnm->FIFOBatches[i]);
+			}
+			if (currVertexGroup != NULL) {
+				currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			}
+		}
 	}
 	glPopMatrix(1);
 	if (31 > model->skeletonCount) {
@@ -926,7 +1145,12 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 				// update our material
 				SetupMaterial(&mats[currVertexGroup->material], false);
 			}
-			glBegin(GL_TRIANGLE);
+			if (!model->defaultMats[currVertexGroup->material].quad) {
+				glBegin(GL_TRIANGLE);
+			}
+			else {
+				glBegin(GL_QUAD);
+			}
 			const int vertCount = currVertexGroup->count;
 			for (int i2 = 0; i2 < vertCount; ++i2) {
 				Vertex* currVert = &((&(currVertexGroup->vertices))[i2]);
@@ -934,24 +1158,34 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 				glTexCoord2t16(currVert->u, currVert->v);
 				glVertex3v16(currVert->x, currVert->y, currVert->z);
 			}
+
 			currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
 			//glEnd();
 		}
 	 }
 	else {
+		for (int i = 0; i < model->skeletonCount; ++i) {
+			glPushMatrix();
+			glRestoreMatrix(0);
+		}
 		DSNativeModel* dsnm = model->NativeModel;
 		for (int i = 0; i < dsnm->FIFOCount; ++i) {
-			if (currVertexGroup->materialChange) {
-				// update our material
+			// uh oh!! we can free except the cache!! assume in order then!!
+			if (currVertexGroup == NULL) {
+				SetupMaterial(&mats[i], false);
+			}
+			else {
 				SetupMaterial(&mats[currVertexGroup->material], false);
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
 			}
-			currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			if (currVertexGroup != NULL) {
+				currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			}
 		}
+		glPopMatrix(model->skeletonCount);
 	}
-	//glPopMatrix(1);
 }
 
 void UploadTexture(Texture* input) {
@@ -1749,6 +1983,7 @@ Animator *CreateAnimator(Model *referenceModel) {
 	retValue->currAnimation = NULL;
 	retValue->queuedAnimCount = 0;
 	retValue->loop = true;
+	retValue->paused = false;
 	// set up default animation values...
 	for (int i = 0; i < referenceModel->skeletonCount; ++i) {
 		memcpy(&retValue->items[i].currRotation, &referenceModel->skeleton[i].rotation, sizeof(Quaternion));
@@ -1771,7 +2006,7 @@ Animator *CreateAnimator(Model *referenceModel) {
 }
 
 void UpdateAnimator(Animator *animator, Model *referenceModel) {
-	if (animator->currAnimation == NULL) {
+	if (animator->currAnimation == NULL || animator->paused) {
 		return;
 	}
 	animator->currFrame += animator->speed;
@@ -1950,6 +2185,10 @@ void DestroyModel(Model *m) {
 		free(m->NativeModel);
 	}
 #endif
+	// check for freed model
+	if (m->vertexGroups == NULL) {
+		free(m->defaultMats);
+	}
 	free(m);
 }
 
@@ -2140,7 +2379,7 @@ int LoadSpriteAsync(char* input, bool sub, bool upload, void (*callBack)(void* d
 	scd->upload = upload;
 	scd->f = f;
 
-	fread_Async(newSprite, fsize, 1, f, LoadSpriteAsyncCallback, scd);
+	return fread_Async(newSprite, fsize, 1, f, LoadSpriteAsyncCallback, scd);
 }
 
 void UnloadSprite(Sprite* input) {

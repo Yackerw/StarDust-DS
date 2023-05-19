@@ -340,7 +340,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 	int triCount = 0;
 	VertexHeader* currVertexGroup = input->vertexGroups;
 	for (int i = 0; i < input->vertexGroupCount; ++i) {
-		triCount += currVertexGroup->count / 3;
+		if (!input->defaultMats[currVertexGroup->material].quad) {
+			triCount += currVertexGroup->count / 3;
+		}
+		else {
+			triCount += (currVertexGroup->count / 4) * 2;
+		}
 		currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
 	}
 	retValue->triangles = (CollisionTriangle*)malloc(sizeof(CollisionTriangle)*triCount);
@@ -351,29 +356,80 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 		Vertex *currVerts = &currVertexGroup->vertices;
 		for (int j = 0; j < currVertexGroup->count; j += 3) {
 			// get verts...
-			for (int k = 0; k < 3; ++k) {
-				retValue->triangles[currTri].verts[k].x = currVerts[j+k].x;
-				retValue->triangles[currTri].verts[k].y = currVerts[j+k].y;
-				retValue->triangles[currTri].verts[k].z = currVerts[j+k].z;
+			if (!input->defaultMats[currVertexGroup->material].quad) {
+				for (int k = 0; k < 3; ++k) {
+					retValue->triangles[currTri].verts[k].x = currVerts[j + k].x;
+					retValue->triangles[currTri].verts[k].y = currVerts[j + k].y;
+					retValue->triangles[currTri].verts[k].z = currVerts[j + k].z;
+				}
+				retValue->triangles[currTri].boundsMax.x = -4000000;
+				retValue->triangles[currTri].boundsMax.y = -4000000;
+				retValue->triangles[currTri].boundsMax.z = -4000000;
+				retValue->triangles[currTri].boundsMin.x = 4000000;
+				retValue->triangles[currTri].boundsMin.y = 4000000;
+				retValue->triangles[currTri].boundsMin.z = 4000000;
+				// calculate bounds extents now
+				for (int k = 0; k < 3; ++k) {
+					retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
+					retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+				}
+				// calculate normal
+				NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
+				currTri += 1;
 			}
-			retValue->triangles[currTri].boundsMax.x = -4000000;
-			retValue->triangles[currTri].boundsMax.y = -4000000;
-			retValue->triangles[currTri].boundsMax.z = -4000000;
-			retValue->triangles[currTri].boundsMin.x = 4000000;
-			retValue->triangles[currTri].boundsMin.y = 4000000;
-			retValue->triangles[currTri].boundsMin.z = 4000000;
-			// calculate bounds extents now
-			for (int k = 0; k < 3; ++k) {
-				retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j+k].x);
-				retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j+k].y);
-				retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j+k].z);
-				retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j+k].x);
-				retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j+k].y);
-				retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j+k].z);
+			else {
+				for (int k = 0; k < 3; ++k) {
+					retValue->triangles[currTri].verts[k].x = currVerts[j + k].x;
+					retValue->triangles[currTri].verts[k].y = currVerts[j + k].y;
+					retValue->triangles[currTri].verts[k].z = currVerts[j + k].z;
+				}
+				retValue->triangles[currTri].boundsMax.x = -4000000;
+				retValue->triangles[currTri].boundsMax.y = -4000000;
+				retValue->triangles[currTri].boundsMax.z = -4000000;
+				retValue->triangles[currTri].boundsMin.x = 4000000;
+				retValue->triangles[currTri].boundsMin.y = 4000000;
+				retValue->triangles[currTri].boundsMin.z = 4000000;
+				// calculate bounds extents now
+				for (int k = 0; k < 3; ++k) {
+					retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
+					retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+				}
+				// calculate normal
+				NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
+				currTri += 1;
+				++j;
+				retValue->triangles[currTri].verts[0].x = currVerts[j + 2].x;
+				retValue->triangles[currTri].verts[0].y = currVerts[j + 2].y;
+				retValue->triangles[currTri].verts[0].z = currVerts[j + 2].z;
+				retValue->triangles[currTri].verts[1] = retValue->triangles[currTri - 1].verts[0];
+				retValue->triangles[currTri].verts[2] = retValue->triangles[currTri - 1].verts[2];
+				retValue->triangles[currTri].boundsMax.x = -4000000;
+				retValue->triangles[currTri].boundsMax.y = -4000000;
+				retValue->triangles[currTri].boundsMax.z = -4000000;
+				retValue->triangles[currTri].boundsMin.x = 4000000;
+				retValue->triangles[currTri].boundsMin.y = 4000000;
+				retValue->triangles[currTri].boundsMin.z = 4000000;
+				// calculate bounds extents now
+				for (int k = 0; k < 3; ++k) {
+					retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
+					retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
+					retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
+					retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+				}
+				// calculate normal
+				NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
+				currTri += 1;
 			}
-			// calculate normal
-			NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
-			currTri += 1;
 		}
 		currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
 	}
