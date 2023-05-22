@@ -360,9 +360,9 @@ def write_skeleton_data(optSkel, f):
 def write_material_data(optObj, f, backfaceCulling):
     # just write default data for now
     for submesh in optObj.subMeshes:
-        write_int(f, int(submesh.material.diffuse_color[0] * 31))
-        write_int(f, int(submesh.material.diffuse_color[1] * 31))
-        write_int(f, int(submesh.material.diffuse_color[2] * 31))
+        write_int(f, int(pow(submesh.material.diffuse_color[0], 1/2.2) * 255) >> 3)
+        write_int(f, int(pow(submesh.material.diffuse_color[1], 1/2.2) * 255) >> 3)
+        write_int(f, int(pow(submesh.material.diffuse_color[2], 1/2.2) * 255) >> 3)
         write_int(f, int(submesh.material.alpha * 31))
         # texture; dummy 0
         write_int(f, 0)
@@ -410,9 +410,23 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
    # sigh, copy the object and mesh so we can apply any modifiers BUT armature
     newObj = bpy.context.selected_objects[0].copy()
     newObj.data = bpy.context.selected_objects[0].data.copy()
+    selObj = bpy.context.selected_objects[0]
     modifierToRemove = newObj.modifiers.get("Armature")
     if (modifierToRemove != None):
         newObj.modifiers.remove(modifierToRemove)
+    if (polygons_type == 'Quads'):
+        bpy.context.scene.objects.link(newObj)
+        # deselect all objects
+        for o in bpy.context.scene.objects:
+            o.select = False
+        newObj.select = True
+        bpy.context.scene.objects.active = newObj
+        bpy.ops.object.mode_set(mode = 'EDIT')
+        # select all n-gons
+        bpy.ops.mesh.select_face_by_sides(number=4, type='GREATER', extend=False)
+        # triangulate them
+        bpy.ops.mesh.quads_convert_to_tris()
+        bpy.ops.object.mode_set(mode = 'OBJECT')
     mesh = newObj.to_mesh(scene=bpy.context.scene, apply_modifiers=True, settings='PREVIEW')
     if (polygons_type == 'Triangles'):
         bm = bmesh.new()
@@ -421,6 +435,8 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
         bmesh.ops.triangulate(bm, faces=bm.faces[:])
         bm.to_mesh(mesh)
         bm.free()
+    if (polygons_type == 'Quads'):
+        bpy.ops.object.delete()
     mesh.calc_normals_split()
     
     boundsx = 0
@@ -499,17 +515,17 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
         boundsMaxz = max(boundsMaxz, vert.co[2])
     
     
-    optObj = optimize_mesh(mesh, bpy.context.selected_objects[0])
+    optObj = optimize_mesh(mesh, selObj)
     bpy.data.meshes.remove(mesh)
     
     skeleton = None;
-    for modifier in bpy.context.selected_objects[0].modifiers:
+    for modifier in selObj.modifiers:
         if modifier.type == 'ARMATURE':
             skeleton = modifier.object
     
     optSkeleton = None
     if skeleton != None:
-        optSkeleton = reorder_bones(optObj, bpy.context.selected_objects[0], skeleton, scale, offsx, offsy, offsz)
+        optSkeleton = reorder_bones(optObj, selObj, skeleton, scale, offsx, offsy, offsz)
     
     # get base offset for object data...
     baseOffs = 0x4C
@@ -544,10 +560,10 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
         write_int(f, 0)
     write_int(f, skeletonOffs)
     # default offset, scale
-    write_float(f, offsx * bpy.context.selected_objects[0].scale.x)
-    write_float(f, offsy * bpy.context.selected_objects[0].scale.x)
-    write_float(f, offsz * bpy.context.selected_objects[0].scale.x)
-    write_float(f, scale * bpy.context.selected_objects[0].scale.x)
+    write_float(f, offsx * selObj.scale.x)
+    write_float(f, offsy * selObj.scale.x)
+    write_float(f, offsz * selObj.scale.x)
+    write_float(f, scale * selObj.scale.x)
     
     # bounds
     write_float(f, boundsMinx)
