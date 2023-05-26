@@ -26,6 +26,8 @@ class vertex:
         self.u = 0.0
         self.v = 0.0
         self.rig = 0
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y and self.z == other.z and self.nx == other.nx and self.ny == other.ny and self.nz == other.nz and self.u == other.u and self.v == other.v and self.rig == other.rig
 class submesh:
     def __init__(self):
         self.verts = []
@@ -34,6 +36,7 @@ class submesh:
         self.material = None
         self.matString = None
         self.quad = False
+        self.strip = False
 class optimized_obj:
     def __init__(self):
         self.type = -1
@@ -191,6 +194,222 @@ def optimize_mesh(mesh, ob):
                             for k in range(0, 3):
                                 subMesh.verts[i+k].v += subMesh.material.active_texture.image.size[1]*2
     
+    # generate quad strips as a start
+    m = 0
+    for subMesh in retValue.subMeshes:
+        if (subMesh.quad and subMesh.strip == False):
+            i = 0
+            while i < len(subMesh.verts):
+                if (i >= len(subMesh.verts)):
+                    break
+                quadVerts = []
+                quadVerts.append(subMesh.verts[i])
+                quadVerts.append(subMesh.verts[i+1])
+                quadVerts.append(subMesh.verts[i+2])
+                quadVerts.append(subMesh.verts[i+3])
+                foundAnyQuad = False
+                quadStripSubmesh = submesh()
+                quadStripSubmesh.strip = True
+                quadStripSubmesh.quad = True
+                quadStripSubmesh.verts.append(quadVerts[0])
+                quadStripSubmesh.verts.append(quadVerts[1])
+                quadStripSubmesh.verts.append(quadVerts[3])
+                quadStripSubmesh.verts.append(quadVerts[2])
+                quadStripSubmesh.material = subMesh.material
+                k = 0
+                while (k < 4 and foundAnyQuad == False):
+                    foundQuad = True
+                    while (foundQuad):
+                        foundQuad = False
+                        j = i + 4
+                        while (j < len(subMesh.verts)):
+                            if (subMesh.verts[j] == quadVerts[3] and subMesh.verts[j + 1] == quadVerts[2]):
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 3])
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 2])
+                                quadVerts[0] = quadVerts[3]
+                                quadVerts[1] = quadVerts[2]
+                                quadVerts[2] = subMesh.verts[j + 2]
+                                quadVerts[3] = subMesh.verts[j + 3]
+                                # pop out the 4 verts we just added
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                # re-iterate over all the polygons to find any that connect to the new quad
+                                foundQuad = True
+                                foundAnyQuad = True
+                                break
+                            # sigh
+                            if (subMesh.verts[j+1] == quadVerts[3] and subMesh.verts[j+2] == quadVerts[2]):
+                                quadStripSubmesh.verts.append(subMesh.verts[j])
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 3])
+                                quadVerts[0] = quadVerts[3]
+                                quadVerts[1] = quadVerts[2]
+                                quadVerts[2] = subMesh.verts[j + 3]
+                                quadVerts[3] = subMesh.verts[j]
+                                # pop out the 4 verts we just added
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundQuad = True
+                                foundAnyQuad = True
+                                break
+                            if (subMesh.verts[j+2] == quadVerts[3] and subMesh.verts[j+3] == quadVerts[2]):
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 1])
+                                quadStripSubmesh.verts.append(subMesh.verts[j])
+                                quadVerts[0] = quadVerts[3]
+                                quadVerts[1] = quadVerts[2]
+                                quadVerts[2] = subMesh.verts[j]
+                                quadVerts[3] = subMesh.verts[j + 1]
+                                # pop out the 4 verts we just added
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundQuad = True
+                                foundAnyQuad = True
+                                break
+                            if (subMesh.verts[j+3] == quadVerts[3] and subMesh.verts[j] == quadVerts[2]):
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 2])
+                                quadStripSubmesh.verts.append(subMesh.verts[j + 1])
+                                quadVerts[0] = quadVerts[3]
+                                quadVerts[1] = quadVerts[2]
+                                quadVerts[2] = subMesh.verts[j + 1]
+                                quadVerts[3] = subMesh.verts[j + 2]
+                                # pop out the 4 verts we just added
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundQuad = True
+                                foundAnyQuad = True
+                                break
+                            j = j + 4
+                    k = k + 1
+                    if (foundAnyQuad == False):
+                        # push them all up one
+                        tmpQuadVert = quadVerts[3]
+                        quadVerts[3] = quadVerts[2]
+                        quadVerts[2] = quadVerts[1]
+                        quadVerts[1] = quadVerts[0]
+                        quadVerts[0] = tmpQuadVert
+                        # fix order in the submesh
+                        quadStripSubmesh.verts[0] = quadVerts[0]
+                        quadStripSubmesh.verts[1] = quadVerts[1]
+                        quadStripSubmesh.verts[2] = quadVerts[3]
+                        quadStripSubmesh.verts[3] = quadVerts[2]
+                    
+                if (foundAnyQuad):
+                    # and pop out the 4 verts we started with since they're going into the quad strip array
+                    subMesh.verts.pop(i)
+                    subMesh.verts.pop(i)
+                    subMesh.verts.pop(i)
+                    subMesh.verts.pop(i)
+                    # finally store the quad strip sub mesh
+                    retValue.subMeshes.insert(m + 1, quadStripSubmesh)
+                    i -= 4
+                if (i >= len(subMesh.verts)):
+                    break
+                i = i + 4
+        
+        if (subMesh.quad == False and subMesh.strip == False):
+            i = 0
+            while (i < len(subMesh.verts)):
+                triVerts = []
+                triVerts.append(subMesh.verts[i])
+                triVerts.append(subMesh.verts[i+1])
+                triVerts.append(subMesh.verts[i+2])
+                foundAnyTri = False
+                triStripSubmesh = submesh()
+                triStripSubmesh.strip = True
+                triStripSubmesh.verts.append(triVerts[0])
+                triStripSubmesh.verts.append(triVerts[1])
+                triStripSubmesh.verts.append(triVerts[2])
+                triStripSubmesh.material = subMesh.material
+                triId = 1
+                k = 0
+                while (k < 4 and foundAnyTri == False):
+                    foundTri = True
+                    while (foundTri):
+                        foundTri = False
+                        j = i + 3
+                        while (j < len(subMesh.verts)):
+                            if (subMesh.verts[j] == triVerts[2] and subMesh.verts[j + 1] == triVerts[1]):
+                                triStripSubmesh.verts.append(subMesh.verts[j + 2])
+                                if (triId % 2 == 0):
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[1] = triVerts[2]
+                                    triVerts[2] = subMesh.verts[j + 2]
+                                else:
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[2] = triVerts[2]
+                                    triVerts[1] = subMesh.verts[j + 2]
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundTri = True
+                                foundAnyTri = True
+                                triId = triId + 1
+                                break
+                            if (subMesh.verts[j+1] == triVerts[2] and subMesh.verts[j + 2] == triVerts[1]):
+                                triStripSubmesh.verts.append(subMesh.verts[j])
+                                if (triId % 2 == 0):
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[1] = triVerts[2]
+                                    triVerts[2] = subMesh.verts[j]
+                                else:
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[2] = triVerts[2]
+                                    triVerts[1] = subMesh.verts[j]
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundTri = True
+                                foundAnyTri = True
+                                triId = triId + 1
+                                break
+                            if (subMesh.verts[j+2] == triVerts[2] and subMesh.verts[j] == triVerts[1]):
+                                triStripSubmesh.verts.append(subMesh.verts[j + 1])
+                                if (triId % 2 == 0):
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[1] = triVerts[2]
+                                    triVerts[2] = subMesh.verts[j + 1]
+                                else:
+                                    triVerts[0] = triVerts[1]
+                                    triVerts[2] = triVerts[2]
+                                    triVerts[1] = subMesh.verts[j + 1]
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                subMesh.verts.pop(j)
+                                foundTri = True
+                                foundAnyTri = True
+                                triId = triId + 1
+                                break
+                            j = j + 3
+                        
+                    k = k + 1
+                    if (foundAnyTri == False):
+                        # push them all up one
+                        tmpTriVert = triVerts[2]
+                        triVerts[2] = triVerts[1]
+                        triVerts[1] = triVerts[0]
+                        triVerts[0] = tmpTriVert
+                        # fix submesh order
+                        triStripSubmesh.verts[0] = triVerts[0]
+                        triStripSubmesh.verts[1] = triVerts[1]
+                        triStripSubmesh.verts[2] = triVerts[2]
+                if (foundAnyTri):
+                    # pop out the 3 verts we started with
+                    subMesh.verts.pop(i)
+                    subMesh.verts.pop(i)
+                    subMesh.verts.pop(i)
+                    # finally store the tri strip sub mesh
+                    retValue.subMeshes.insert(m + 1, triStripSubmesh)
+                    i -= 3
+                i = i + 3
+        m = m + 1
+    
     # generic object transforms
     retValue.parent = ob.parent
     retValue.blenderObj = ob
@@ -229,9 +448,21 @@ def write_vertex_data(obj, f):
     currMat = 0
     for submesh in obj.subMeshes:
         write_short(f, len(submesh.verts))
-        write_byte(f, 1)
-        write_byte(f, currMat)
-        currMat += 1
+        if (submesh.strip):
+            if (submesh.quad):
+                write_byte(f, 6)
+            else:
+                write_byte(f, 2)
+        else:
+            if (submesh.quad):
+                write_byte(f, 5)
+            else:
+                write_byte(f, 1)
+        if (submesh.strip == False):
+            write_byte(f, currMat)
+            currMat += 1
+        else:
+            write_byte(f, currMat - 1)
         for vert in submesh.verts:
             write_vertex(f, vert.x)
             write_vertex(f, vert.y)
@@ -360,6 +591,8 @@ def write_skeleton_data(optSkel, f):
 def write_material_data(optObj, f, backfaceCulling):
     # just write default data for now
     for submesh in optObj.subMeshes:
+        if (submesh.strip):
+            continue
         write_int(f, int(pow(submesh.material.diffuse_color[0], 1/2.2) * 255) >> 3)
         write_int(f, int(pow(submesh.material.diffuse_color[1], 1/2.2) * 255) >> 3)
         write_int(f, int(pow(submesh.material.diffuse_color[2], 1/2.2) * 255) >> 3)
@@ -378,11 +611,8 @@ def write_material_data(optObj, f, backfaceCulling):
             write_byte(f, 1)
         # specular amount
         write_byte(f, int(submesh.material.specular_intensity * 255));
-        # determines whether or not submesh is quadrilateral
-        if (submesh.quad):
-            write_byte(f, 1)
-        else:
-            write_byte(f, 0)
+        # padding
+        write_byte(f, 0)
         # texture offset and scale, for now 0 and 1
         write_float(f, 0)
         write_float(f, 0)
@@ -537,9 +767,13 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
         baseOffs += 4
         baseOffs += 16 * len(submesh.verts)
         # materials
-    write_int(f, len(optObj.subMeshes))
+    optObjCount = 0
+    for submesh in optObj.subMeshes:
+        if submesh.strip == False:
+            optObjCount = optObjCount + 1
+    write_int(f, optObjCount)
     write_int(f, baseOffs)
-    baseOffs += 0x34 * len(optObj.subMeshes)
+    baseOffs += 0x34 * optObjCount
     # setup BONE ZONE
     skeletonOffs = baseOffs
     if (optSkeleton != None):
@@ -549,10 +783,11 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
     write_int(f, baseOffs)
     # uh oh gotta get texture names
     for submesh in optObj.subMeshes:
-        if (submesh.material.active_texture != None and hasattr(submesh.material.active_texture, 'image') and submesh.material.active_texture.image != None):
-            baseOffs += 1 + len(submesh.material.active_texture.image.name)
-        else:
-            baseOffs += 1 + len("white.sdi")
+        if (submesh.strip == False):
+            if (submesh.material.active_texture != None and hasattr(submesh.material.active_texture, 'image') and submesh.material.active_texture.image != None):
+                baseOffs += 1 + len(submesh.material.active_texture.image.name)
+            else:
+                baseOffs += 1 + len("white.sdi")
     # skeleton now...
     if (optSkeleton != None):
         write_int(f, len(optSkeleton))
@@ -588,12 +823,13 @@ def write_some_data(context, filepath, auto_transform, backfaceCulling, polygons
     
     # texture names
     for submesh in optObj.subMeshes:
-        if (submesh.material.active_texture != None and hasattr(submesh.material.active_texture, 'image') and submesh.material.active_texture.image != None):
-            f.write(submesh.material.active_texture.image.name[0:len(submesh.material.active_texture.image.name)-3].encode('ascii'))
-            f.write("sdi".encode('ascii'))
-        else:
-            f.write("white.sdi".encode('ascii'))
-        write_byte(f, 0)
+        if (submesh.strip == False):
+            if (submesh.material.active_texture != None and hasattr(submesh.material.active_texture, 'image') and submesh.material.active_texture.image != None):
+                f.write(submesh.material.active_texture.image.name[0:len(submesh.material.active_texture.image.name)-3].encode('ascii'))
+                f.write("sdi".encode('ascii'))
+            else:
+                f.write("white.sdi".encode('ascii'))
+            write_byte(f, 0)
     
     # todo: write bounding box data
     
@@ -638,10 +874,10 @@ class ExportSomeData(Operator, ExportHelper):
 
     polygons_type = EnumProperty(
         name="Polygon export type",
-        description="Quads will not export N-Gons properly, but is more efficient to render. May also result in strange deformation for rigged models.",
+        description="Quads are more efficient to render. May also result in strange deformation for rigged models.",
         items=(
             ('Triangles', "Triangles", "Export whole model as triangles"),
-            ('Quads', "Quads", "Export only triangles & Quads"),
+            ('Quads', "Quads", "Export triangles & Quads"),
         ),
         default='Quads',
     )

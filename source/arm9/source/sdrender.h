@@ -28,6 +28,8 @@ extern int ambientColor;
 enum SpriteRenderPositionX {SpriteAlignLeft, SpriteAlignCenter, SpriteAlignRight};
 enum SpriteRenderPositionY {SpriteAlignTop, SpriteAlignBottom = 2};
 
+enum VertexHeaderBitflags {VTX_MATERIAL_CHANGE = 1, VTX_STRIPS = 2, VTX_QUAD = 4};
+
 typedef struct {
 	v16 x;
 	v16 y;
@@ -41,7 +43,7 @@ typedef struct {
 
 typedef struct {
 	short count;
-	bool materialChange;
+	unsigned char bitFlags;
 	unsigned char material;
 	Vertex vertices;
 } VertexHeader;
@@ -157,7 +159,7 @@ struct SDMaterial {
 	bool backFaceCulling;
 	bool lit;
 	char specular;
-	bool quad;
+	char padding;
 	f32 texOffsX;
 	f32 texOffsY;
 	f32 texScaleX;

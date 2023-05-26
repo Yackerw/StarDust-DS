@@ -305,41 +305,145 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	nativeModel->boneIndexCount = vertCount;
 	nativeModel->weightCount = vertCount;
 
+	// only create a new submesh for each material change
+	int materialChangeCount = 0;
+	currHeader = retValue->vertexGroups;
+	int prevQuad = 0;
+	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
+		if (currHeader->bitFlags & VTX_MATERIAL_CHANGE || (currHeader->bitFlags & VTX_QUAD) != prevQuad) {
+			++materialChangeCount;
+			prevQuad = currHeader->bitFlags & VTX_QUAD;
+		}
+		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+	}
 
-	SetSubmeshCount(nativeModel, retValue->vertexGroupCount);
+	prevQuad = 0;
+	SetSubmeshCount(nativeModel, materialChangeCount);
 	currVert = 0;
 	currHeader = retValue->vertexGroups;
+	int subMeshId = 0;
 	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		if (!model->defaultMats[currHeader->material].quad) {
-			int* tris = (int*)malloc(sizeof(int) * currHeader->count);
-			for (int j = 0; j < currHeader->count; ++j) {
-				tris[j] = currVert;
-				++currVert;
+		// allocate enough memory for the whole thing until next incompatible material
+		int triCount = 0;
+		VertexHeader* headerIterator = currHeader;
+		prevQuad = currHeader->bitFlags & VTX_QUAD;
+		for (int j = i; j < retValue->vertexGroupCount; ++j) {
+			if ((headerIterator->bitFlags & VTX_MATERIAL_CHANGE || (headerIterator->bitFlags & VTX_QUAD) != prevQuad) && j != i) {
+				break;
 			}
-			SetSubmeshTriangles(nativeModel, i, tris, currHeader->count);
-			free(tris);
-			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
-		}
-		else {
-			int* tris = (int*)malloc(sizeof(int) * ((currHeader->count / 4) * 6));
-			int triPos = 0;
-			int quadTracker = 0;
-			for (int j = 0; j < currHeader->count; ++j) {
-				tris[triPos] = currVert;
-				++currVert;
-				++triPos;
-				++quadTracker;
-				if (quadTracker % 4 == 0) {
-					tris[triPos] = currVert - 4;
-					++triPos;
-					tris[triPos] = currVert - 2;
-					++triPos;
+			if (!(headerIterator->bitFlags & VTX_QUAD)) {
+				if (headerIterator->bitFlags & VTX_STRIPS) {
+					triCount += 3 + (headerIterator->count - 3) * 3;
+				}
+				else {
+					triCount += headerIterator->count;
 				}
 			}
-			SetSubmeshTriangles(nativeModel, i, tris, ((currHeader->count / 4) * 6));
-			free(tris);
-			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+			else {
+				if (headerIterator->bitFlags & VTX_STRIPS) {
+					// 2 verts for 2 triangles, times 3
+					triCount += 6 + (headerIterator->count - 4) * 3;
+				}
+				else {
+					triCount += (headerIterator->count / 4) * 6;
+				}
+			}
+			prevQuad = currHeader->bitFlags & VTX_QUAD;
+			headerIterator = (VertexHeader*)((uint)(&(headerIterator->vertices)) + (uint)(sizeof(Vertex) * headerIterator->count));
 		}
+		int* tris = (int*)calloc(sizeof(int) * triCount, 1);
+		int triPos = 0;
+		while (currHeader != headerIterator) {
+			if (!(currHeader->bitFlags & VTX_QUAD)) {
+				if (!(currHeader->bitFlags & VTX_STRIPS)) {
+					for (int j = 0; j < currHeader->count; ++j) {
+						tris[triPos] = currVert;
+						++currVert;
+						++triPos;
+					}
+				}
+				else {
+					// add first triangle
+					tris[triPos] = currVert;
+					tris[triPos+1] = currVert+1;
+					tris[triPos+2] = currVert+2;
+					currVert += 3;
+					triPos += 3;
+					int stripIterator = 0;
+					for (int j = 3; j < currHeader->count; ++j) {
+						if ((stripIterator & 1) == 0) {
+							tris[triPos] = currVert - 2;
+							tris[triPos + 2] = currVert - 1;
+							tris[triPos + 1] = currVert;
+						}
+						else {
+							tris[triPos + 2] = currVert;
+							tris[triPos + 1] = currVert - 1;
+							tris[triPos] = currVert - 2;
+						}
+
+						triPos += 3;
+						++currVert;
+						++stripIterator;
+					}
+				}
+			}
+			else {
+				if (!(currHeader->bitFlags & VTX_STRIPS)) {
+					int quadTracker = 0;
+					for (int j = 0; j < currHeader->count; ++j) {
+						tris[triPos] = currVert;
+						++currVert;
+						++triPos;
+						++quadTracker;
+						if (quadTracker % 4 == 0) {
+							tris[triPos] = currVert - 4;
+							++triPos;
+							tris[triPos] = currVert - 2;
+							++triPos;
+						}
+					}
+				}
+				else {
+					// create initial quad
+					tris[triPos] = currVert;
+					tris[triPos + 1] = currVert + 1;
+					tris[triPos + 2] = currVert + 2;
+					triPos += 3;
+					currVert += 3;
+					tris[triPos] = currVert - 2;
+					tris[triPos + 1] = currVert;
+					tris[triPos + 2] = currVert - 1;
+					triPos += 3;
+					++currVert;
+					// now, un-stripify
+					for (int j = 4; j < currHeader->count; j += 2) {
+						// create virtual quad
+						int quad[4];
+						quad[0] = currVert - 1;
+						quad[1] = currVert - 2;
+						quad[2] = currVert + 1;
+						quad[3] = currVert;
+						currVert += 2;
+						// create two triangles from quads
+						tris[triPos] = quad[2];
+						tris[triPos + 1] = quad[1];
+						tris[triPos + 2] = quad[0];
+						triPos += 3;
+						tris[triPos] = quad[1];
+						tris[triPos + 1] = quad[2];
+						tris[triPos + 2] = quad[3];
+						triPos += 3;
+					}
+				}
+			}
+			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+			++i;
+		}
+		SetSubmeshTriangles(nativeModel, subMeshId, tris, triCount);
+		free(tris);
+		++subMeshId;
+		--i;
 	}
 	UpdateMesh(nativeModel);
 	retValue->NativeModel = nativeModel;
@@ -378,6 +482,7 @@ Model *LoadModel(char *input) {
 }
 
 Model* FreeModelKeepCache(Model* model) {
+	return model;
 	if (model->NativeModel == NULL) {
 		// no cache...
 		return model;
@@ -606,11 +711,21 @@ void CacheRiggedModel(Model* reference) {
 		// initial one with GFX BEGIN and such
 		FIFOBatch[1] = FIFO_COMMAND_PACK(FIFO_BEGIN, FIFO_MTX_RESTORE, FIFO_NORMAL, FIFO_TEX_COORD);
 		// pack the data
-		if (reference->defaultMats[currHeader->material].quad) {
-			FIFOBatch[2] = GL_QUAD;
+		if (currHeader->bitFlags & VTX_QUAD) {
+			if (currHeader->bitFlags & VTX_STRIPS) {
+				FIFOBatch[2] = GL_QUAD_STRIP;
+			}
+			else {
+				FIFOBatch[2] = GL_QUAD;
+			}
 		}
 		else {
-			FIFOBatch[2] = GL_TRIANGLE;
+			if (currHeader->bitFlags & VTX_STRIPS) {
+				FIFOBatch[2] = GL_TRIANGLE_STRIP;
+			}
+			else {
+				FIFOBatch[2] = GL_TRIANGLE;
+			}
 		}
 		FIFOBatch[3] = vertices[0].boneID;
 		FIFOBatch[4] = vertices[0].normal;
@@ -738,11 +853,21 @@ void CacheModel(Model* reference) {
 		// initial one with GFX BEGIN and such
 		FIFOBatch[1] = FIFO_COMMAND_PACK(FIFO_BEGIN, FIFO_NORMAL, FIFO_TEX_COORD, FIFO_VERTEX16);
 		// pack the data
-		if (reference->defaultMats[currHeader->material].quad) {
-			FIFOBatch[2] = GL_QUAD;
+		if (currHeader->bitFlags & VTX_QUAD) {
+			if (currHeader->bitFlags & VTX_STRIPS) {
+				FIFOBatch[2] = GL_QUAD_STRIP;
+			}
+			else {
+				FIFOBatch[2] = GL_QUAD;
+			}
 		}
 		else {
-			FIFOBatch[2] = GL_TRIANGLE;
+			if (currHeader->bitFlags & VTX_STRIPS) {
+				FIFOBatch[2] = GL_TRIANGLE_STRIP;
+			}
+			else {
+				FIFOBatch[2] = GL_TRIANGLE;
+			}
 		}
 		FIFOBatch[3] = currVerts[0].normal;
 		FIFOBatch[4] = TEXTURE_PACK(currVerts[0].u, currVerts[0].v);
@@ -1049,15 +1174,25 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 		int currBone = -1;
 		const int vertGroupCount = model->vertexGroupCount;
 		for (int i = 0; i < vertGroupCount; ++i) {
-			if (currVertexGroup->materialChange) {
+			if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
 				SetupMaterial(&mats[currVertexGroup->material], true);
 				currBone = -1;
 			}
-			if (model->defaultMats[currVertexGroup->material].quad) {
-				glBegin(GL_QUAD);
+			if (currVertexGroup->bitFlags & VTX_QUAD) {
+				if (currVertexGroup->bitFlags & VTX_STRIPS) {
+					glBegin(GL_QUAD_STRIP);
+				}
+				else {
+					glBegin(GL_QUAD);
+				}
 			}
 			else {
-				glBegin(GL_TRIANGLE);
+				if (currVertexGroup->bitFlags & VTX_STRIPS) {
+					glBegin(GL_TRIANGLE_STRIP);
+				}
+				else {
+					glBegin(GL_TRIANGLE);
+				}
 			}
 			const int vertCount = currVertexGroup->count;
 			for (int i2 = 0; i2 < vertCount; ++i2) {
@@ -1099,7 +1234,8 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 				SetupMaterial(&mats[i], true);
 			}
 			else {
-				SetupMaterial(&mats[currVertexGroup->material], true);
+				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE)
+					SetupMaterial(&mats[currVertexGroup->material], true);
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
@@ -1141,15 +1277,25 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 	if (model->NativeModel == NULL) {
 		const int vertGroupCount = model->vertexGroupCount;
 		for (int i = 0; i < vertGroupCount; ++i) {
-			if (currVertexGroup->materialChange) {
+			if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
 				// update our material
 				SetupMaterial(&mats[currVertexGroup->material], false);
 			}
-			if (!model->defaultMats[currVertexGroup->material].quad) {
-				glBegin(GL_TRIANGLE);
+			if (!(currVertexGroup->bitFlags & VTX_QUAD)) {
+				if (currVertexGroup->bitFlags & VTX_STRIPS) {
+					glBegin(GL_TRIANGLE_STRIP);
+				}
+				else {
+					glBegin(GL_TRIANGLE);
+				}
 			}
 			else {
-				glBegin(GL_QUAD);
+				if (currVertexGroup->bitFlags & VTX_STRIPS) {
+					glBegin(GL_QUAD_STRIP);
+				}
+				else {
+					glBegin(GL_QUAD);
+				}
 			}
 			const int vertCount = currVertexGroup->count;
 			for (int i2 = 0; i2 < vertCount; ++i2) {
@@ -1175,7 +1321,8 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 				SetupMaterial(&mats[i], false);
 			}
 			else {
-				SetupMaterial(&mats[currVertexGroup->material], false);
+				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE)
+					SetupMaterial(&mats[currVertexGroup->material], false);
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
