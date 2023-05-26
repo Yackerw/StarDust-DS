@@ -482,7 +482,6 @@ Model *LoadModel(char *input) {
 }
 
 Model* FreeModelKeepCache(Model* model) {
-	return model;
 	if (model->NativeModel == NULL) {
 		// no cache...
 		return model;
@@ -490,7 +489,6 @@ Model* FreeModelKeepCache(Model* model) {
 	// duplicate materials
 	SDMaterial* mats = (SDMaterial*)malloc(sizeof(SDMaterial) * model->materialCount);
 	memcpy(mats, model->defaultMats, sizeof(SDMaterial) * model->materialCount);
-	printf("%i\n", model->materialCount);
 	Model* retValue = (Model*)calloc(sizeof(Model), 1);
 	retValue->defaultMats = mats;
 	retValue->materialCount = model->materialCount;
@@ -504,6 +502,19 @@ Model* FreeModelKeepCache(Model* model) {
 		retValue->skeleton = (Bone*)malloc(sizeof(Bone) * retValue->skeletonCount);
 		memcpy(retValue->skeleton, model->skeleton, sizeof(Bone) * retValue->skeletonCount);
 	}
+	// set up vertex headers
+	retValue->vertexGroupCount = model->vertexGroupCount;
+	retValue->vertexGroups = (VertexHeader*)malloc((sizeof(VertexHeader) * model->vertexGroupCount) - (sizeof(Vertex) * model->vertexGroupCount));
+	VertexHeader* currHeader = retValue->vertexGroups;
+	VertexHeader* modelHeader = model->vertexGroups;
+	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
+		currHeader->material = modelHeader->material;
+		currHeader->bitFlags = modelHeader->bitFlags;
+		currHeader->count = 0;
+		currHeader = &currHeader->vertices;
+		modelHeader = (VertexHeader*)((uint)(&(modelHeader->vertices)) + (uint)(sizeof(Vertex) * (modelHeader->count)));
+	}
+	retValue->version = 0x80000000 | model->version;
 	free(model);
 	return retValue;
 }
@@ -2323,7 +2334,7 @@ void DestroyModel(Model *m) {
 	}
 #ifdef _WIN32
 	if (m->NativeModel != NULL) {
-		DestroyMesh(m->NativeModel);
+		DeleteMesh(m->NativeModel);
 		free(m->NativeModel);
 	}
 #endif
@@ -2333,8 +2344,12 @@ void DestroyModel(Model *m) {
 	}
 #endif
 	// check for freed model
-	if (m->vertexGroups == NULL) {
+	if (m->version & 0x80000000) {
 		free(m->defaultMats);
+		free(m->vertexGroups);
+		if (m->skeletonCount != NULL) {
+			free(m->skeleton);
+		}
 	}
 	free(m);
 }
