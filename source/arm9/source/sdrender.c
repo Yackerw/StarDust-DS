@@ -2347,7 +2347,7 @@ void DestroyModel(Model *m) {
 	if (m->version & 0x80000000) {
 		free(m->defaultMats);
 		free(m->vertexGroups);
-		if (m->skeletonCount != NULL) {
+		if (m->skeleton != NULL) {
 			free(m->skeleton);
 		}
 	}
