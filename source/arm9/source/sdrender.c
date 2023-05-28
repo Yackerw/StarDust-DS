@@ -2328,7 +2328,7 @@ void DestroySDMaterial(SDMaterial *mat) {
 	}
 }
 
-void DestroyModel(Model *m) {
+void DestroyModel(Model* m) {
 	for (int i = 0; i < m->materialCount; ++i) {
 		DestroySDMaterial(&m->defaultMats[i]);
 	}
@@ -2340,6 +2340,13 @@ void DestroyModel(Model *m) {
 #endif
 #ifndef _NOTDS
 	if (m->NativeModel != NULL) {
+		DSNativeModel* dsnm = (DSNativeModel*)m->NativeModel;
+		for (int i = 0; i < dsnm->FIFOCount; ++i) {
+			if (dsnm->FIFOBatches[i] != NULL) {
+				free(dsnm->FIFOBatches[i]);
+			}
+		}
+		free(dsnm->FIFOBatches);
 		free(m->NativeModel);
 	}
 #endif
@@ -2367,6 +2374,13 @@ void DestroyGeneratedModel(Model* m) {
 #endif
 #ifndef _NOTDS
 	if (m->NativeModel != NULL) {
+		DSNativeModel* dsnm = (DSNativeModel*)m->NativeModel;
+		for (int i = 0; i < dsnm->FIFOCount; ++i) {
+			if (dsnm->FIFOBatches[i] != NULL) {
+				free(dsnm->FIFOBatches[i]);
+			}
+}
+		free(dsnm->FIFOBatches);
 		free(m->NativeModel);
 	}
 #endif
