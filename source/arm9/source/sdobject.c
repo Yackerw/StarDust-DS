@@ -93,6 +93,31 @@ bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMa
 					}
 				}
 			}
+			if (colObject->boxCol != NULL) {
+				Vec3 boxMin;
+				boxMin.x = -colObject->boxCol->extents.x;
+				boxMin.y = -colObject->boxCol->extents.y;
+				boxMin.z = -colObject->boxCol->extents.z;
+				// rotate point and direction
+				Vec3 rotatedPoint, workVec;
+				Vec3Subtraction(point, colObject->boxCol->position, &workVec);
+				Quaternion inverseRot;
+				QuaternionInverse(colObject->boxCol->rotation, &inverseRot);
+				QuatTimesVec3(&inverseRot, &workVec, &rotatedPoint);
+				Vec3 rotatedDir;
+				QuatTimesVec3(&inverseRot, direction, &rotatedDir);
+				// ray on AABB
+				if (RayOnAABB(&rotatedPoint, &rotatedDir, &boxMin, &colObject->boxCol->extents, &tempNorm, &tempT)) {
+					if (tempT <= closestHit && tempT <= length) {
+						everHit = true;
+						QuatTimesVec3(colObject->boxCol->rotation, &tempNorm, &closestNormal);
+						closestHit = tempT;
+						closestHitType = COLLIDER_BOX;
+						closestObject = colObject;
+						closestTriHit = -1;
+					}
+				}
+			}
 		}
 		colObject = colObject->next;
 	}
@@ -123,7 +148,6 @@ bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMa
 }
 
 int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, CollisionHit* hitInfos, int maxHit) {
-	// TODO: recode this function to be more inline with the raycast function
 	// iterate over all objects and get mesh colliders
 	Object *meshObject = firstObject.next;
 	// you MUST pass some collision storage to use function, sowwy
@@ -149,9 +173,9 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 			// radius...
 			int newRadius = divf32(sphere->radius, meshObject->scale.x);
 			// are we INSIDE the AABB?
-			if (abs(rotatedPosition.x - meshObject->meshCol->AABBPosition.x) > meshObject->meshCol->AABBBounds.x + newRadius ||
-			abs(rotatedPosition.y - meshObject->meshCol->AABBPosition.y) > meshObject->meshCol->AABBBounds.y + newRadius ||
-			abs(rotatedPosition.z - meshObject->meshCol->AABBPosition.z) > meshObject->meshCol->AABBBounds.z + newRadius) {
+			if (f32abs(rotatedPosition.x - meshObject->meshCol->AABBPosition.x) > meshObject->meshCol->AABBBounds.x + newRadius ||
+			f32abs(rotatedPosition.y - meshObject->meshCol->AABBPosition.y) > meshObject->meshCol->AABBBounds.y + newRadius ||
+			f32abs(rotatedPosition.z - meshObject->meshCol->AABBPosition.z) > meshObject->meshCol->AABBBounds.z + newRadius) {
 				meshObject = meshObject->next;
 				continue;
 			}
@@ -260,9 +284,9 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	// radius...
 	f32 newRadius = divf32(sphere->radius, meshObject->scale.x);
 	// are we INSIDE the AABB?
-	if (abs(rotatedPosition.x - meshObject->meshCol->AABBPosition.x) > meshObject->meshCol->AABBBounds.x + newRadius ||
-	abs(rotatedPosition.y - meshObject->meshCol->AABBPosition.y) > meshObject->meshCol->AABBBounds.y + newRadius ||
-	abs(rotatedPosition.z - meshObject->meshCol->AABBPosition.z) > meshObject->meshCol->AABBBounds.z + newRadius) {
+	if (f32abs(rotatedPosition.x - meshObject->meshCol->AABBPosition.x) > meshObject->meshCol->AABBBounds.x + newRadius ||
+	f32abs(rotatedPosition.y - meshObject->meshCol->AABBPosition.y) > meshObject->meshCol->AABBBounds.y + newRadius ||
+	f32abs(rotatedPosition.z - meshObject->meshCol->AABBPosition.z) > meshObject->meshCol->AABBBounds.z + newRadius) {
 		return;
 	}
 	CollisionSphere newSphere;
@@ -337,6 +361,33 @@ void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 	}
 }
 
+void SphereObjOnBoxObj(Object* collider, Object* collidee) {
+	// first, do AABB check
+	f32 maxExtents = mulf32(Max(collidee->boxCol->extents.x, Max(collidee->boxCol->extents.y, collidee->boxCol->extents.z)), Fixed32ToNative(4096 + 2048));
+	f32 extentsPlusRadius = maxExtents + collider->sphereCol->radius;
+
+	if (f32abs(collider->sphereCol->position->x - collidee->boxCol->position->x) > extentsPlusRadius ||
+		f32abs(collider->sphereCol->position->y - collidee->boxCol->position->y) > extentsPlusRadius ||
+		f32abs(collider->sphereCol->position->z - collidee->boxCol->position->z) > extentsPlusRadius) {
+		return;
+	}
+
+	// okay great, perform actual collision check
+	CollisionHit hitInfo;
+	if (SphereOnOBB(collider->sphereCol, collidee->boxCol, &hitInfo.hitPos, &hitInfo.normal, &hitInfo.penetration)) {
+		hitInfo.colliderType = COLLIDER_BOX;
+		hitInfo.hitObject = collidee;
+		if (collisionFuncs[collider->objectType] == NULL || collisionFuncs[collider->objectType](collider, &hitInfo)) {
+			Vec3 tmpNormal;
+			tmpNormal.x = mulf32(hitInfo.normal.x, hitInfo.penetration);
+			tmpNormal.y = mulf32(hitInfo.normal.y, hitInfo.penetration);
+			tmpNormal.z = mulf32(hitInfo.normal.z, hitInfo.penetration);
+			// move out
+			Vec3Addition(collider->sphereCol->position, &tmpNormal, collider->sphereCol->position);
+		}
+	}
+}
+
 int GetObjectsOfType(int type, Object **out, int maxObjects) {
 	Object *currObject = firstObject.next;
 	int currIdx = 0;
@@ -388,6 +439,9 @@ void ProcessObjects() {
 								}
 								if (colObject->sphereCol != NULL) {
 									SphereObjOnSphereObj(currObject, colObject);
+								}
+								if (colObject->boxCol != NULL) {
+									SphereObjOnBoxObj(currObject, colObject);
 								}
 							}
 						}

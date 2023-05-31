@@ -31,6 +31,7 @@ struct Object {
 	Model *mesh;
 	CollisionSphere *sphereCol;
 	MeshCollider *meshCol;
+	CollisionBox* boxCol;
 	unsigned int flags;
 	bool solid;
 	bool moves;

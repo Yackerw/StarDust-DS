@@ -645,7 +645,7 @@ void DestroyCollisionMesh(MeshCollider* meshCollider) {
 }
 
 // doesn't return position by default since this should rarely be used by actual game code
-bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, f32* t) {
+bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t) {
 	Vec3 tMin, tMax;
 	Vec3 workVec;
 	Vec3 newDir = *direction;
@@ -668,8 +668,28 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, f32* t)
 	Vec3 t2 = { Max(tMin.x, tMax.x), Max(tMin.y, tMax.y), Max(tMin.z, tMax.z) };
 	f32 tNear = Max(t1.x, Max(t1.y, t1.z));
 	f32 tFar = Min(t2.x, Min(t2.y, t2.z));
+	f32 dist;
+	if (tNear < 0) {
+		dist = tFar;
+	}
+	else {
+		dist = tNear;
+	}
 	if (t != NULL) {
-		*t = tNear;
+		*t = dist;
+	}
+	// find normal
+	if (normal != NULL) {
+		f32 tSeries[] = { tMin.x, tMax.x, tMin.y, tMax.y, tMin.z, tMax.z };
+		Vec3 normals[] = { {Fixed32ToNative(-4096), 0, 0 }, {Fixed32ToNative(4096), 0, 0},
+			{0, Fixed32ToNative(-4096), 0}, {0, Fixed32ToNative(4096), 0},
+			{0, 0, Fixed32ToNative(-4096)}, {0, 0, Fixed32ToNative(4096)} };
+		for (int i = 0; i < 6; ++i) {
+			if (dist == tSeries[i]) {
+				*normal = normals[i];
+				break;
+			}
+		}
 	}
 	return tNear <= tFar && tFar >= 0;
 #else
@@ -711,9 +731,32 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, f32* t)
 		tFar = t23;
 	}
 	// who cares if it gets truncated
-	if (t != NULL) {
-		*t = tNear;
+	long long dist;
+	f32 dist;
+	if (tNear < 0) {
+		dist = tFar;
 	}
+	else {
+		dist = tNear;
+	}
+	if (t != NULL) {
+		*t = dist;
+	}
+
+	// return normal as well
+	if (normal != NULL) {
+		f32 tSeries[] = { tMin1, tMax1, tMin2, tMax2, tMin3, tMax3 };
+		Vec3 normals[] = { {Fixed32ToNative(-4096), 0, 0 }, {Fixed32ToNative(4096), 0, 0},
+			{0, Fixed32ToNative(-4096), 0}, {0, Fixed32ToNative(4096), 0},
+			{0, 0, Fixed32ToNative(-4096)}, {0, 0, Fixed32ToNative(4096)} };
+		for (int i = 0; i < 6; ++i) {
+			if (dist == tSeries[i]) {
+				*normal = normals[i];
+				break;
+			}
+		}
+	}
+
 	return tNear <= tFar && tFar >= 0;
 #endif
 }
@@ -813,7 +856,7 @@ void RaycastQuadTreeSub(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin,
 	if (!block->subdivided) {
 		if (block->triCount > 0) {
 			if (AABBCheck(AABBMin, AABBMax, &block->boundsMin, &block->boundsMax)) {
-				if (RayOnAABB(point, direction, &block->boundsMin, &block->boundsMax, &t)) {
+				if (RayOnAABB(point, direction, &block->boundsMin, &block->boundsMax, NULL, &t)) {
 					if (t <= length) {
 						hitBlocks[*hitBlockPosition] = block;
 						*hitBlockPosition += 1;
@@ -906,7 +949,7 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 	Vec3 AABBMin, AABBMax;
 	Vec3Subtraction(&mesh->AABBPosition, &mesh->AABBBounds, &AABBMin);
 	Vec3Addition(&mesh->AABBPosition, &mesh->AABBBounds, &AABBMax);
-	if (RayOnAABB(&newPoint, &newDirection, &AABBMin, &AABBMax, &tempt)) {
+	if (RayOnAABB(&newPoint, &newDirection, &AABBMin, &AABBMax, NULL, &tempt)) {
 		if (tempt > newLength) {
 			return false;
 		}
@@ -1001,4 +1044,86 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 	free(trisToCheck);
 	free(hitBlocks);
 	return everHit;
+}
+
+void ClosestPointAABB(Vec3* position, Vec3* boxMin, Vec3* boxMax, Vec3* out) {
+	*out = *position;
+
+	out->x = (out->x < boxMin->x) ? boxMin->x : out->x;
+	out->y = (out->y < boxMin->y) ? boxMin->y : out->y;
+	out->z = (out->z < boxMin->z) ? boxMin->z : out->z;
+
+	out->x = (out->x > boxMax->x) ? boxMax->x : out->x;
+	out->y = (out->y > boxMax->y) ? boxMax->y : out->y;
+	out->z = (out->z > boxMax->z) ? boxMax->z : out->z;
+}
+
+// essentially just sphere on AABB but applying inverse rotation to the sphere
+bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3* normal, f32* t) {
+	Vec3 rotatedSpherePoint, workVec;
+	Vec3Subtraction(sphere->position, box->position, &workVec);
+	Quaternion invQuat;
+	QuaternionInverse(box->rotation, &invQuat);
+	QuatTimesVec3(&invQuat, &workVec, &rotatedSpherePoint);
+
+	// center around 0
+	Vec3 boxMin;
+	Vec3 zeroVec = { 0, 0, 0 };
+	Vec3Subtraction(&zeroVec, &box->extents, &boxMin);
+
+	Vec3 closestPoint;
+	ClosestPointAABB(&rotatedSpherePoint, &boxMin, &box->extents, &closestPoint);
+	Vec3 closestRelativeToSphere;
+	Vec3Subtraction(&rotatedSpherePoint, &closestPoint, &closestRelativeToSphere);
+	f32 sqrDist = SqrMagnitude(&closestRelativeToSphere);
+
+	if (sqrDist <= mulf32(sphere->radius, sphere->radius)) {
+		*hitPos = closestPoint;
+		if (sqrDist <= Fixed32ToNative(1)) {
+			// we're INSIDE the cube, fix!
+			Normalize(&rotatedSpherePoint, normal);
+
+			// gross i know but nothing better came to me
+			// 2867 = 0.7f
+			const f32 normalCheck = Fixed32ToNative(2867);
+			if (normal->y >= normalCheck) {
+				normal->x = 0;
+				normal->y = Fixed32ToNative(4096);
+				normal->z = 0;
+			} else if (normal->y <= -normalCheck) {
+				normal->x = 0;
+				normal->y = Fixed32ToNative(-4096);
+				normal->z = 0;
+			} else if (normal->x >= normalCheck) {
+				normal->x = Fixed32ToNative(4096);
+				normal->y = 0;
+				normal->z = 0;
+			} else if (normal->x <= -normalCheck) {
+				normal->y = 0;
+				normal->x = Fixed32ToNative(-4096);
+				normal->z = 0;
+			} else if (normal->z >= normalCheck) {
+				normal->x = 0;
+				normal->z = Fixed32ToNative(4096);
+				normal->y = 0;
+			}
+			else {
+				normal->x = 0;
+				normal->y = 0;
+				normal->z = Fixed32ToNative(-4096);
+			}
+			// this also sucks
+			*t = sphere->radius + f32abs(DotProduct(normal, &box->extents)) - DotProduct(normal, &rotatedSpherePoint);
+		}
+		else {
+			// we're outside of cube, return values
+			Normalize(&closestRelativeToSphere, normal);
+			*t = sphere->radius - sqrtf32(sqrDist);
+		}
+		Vec3 tmpNormal;
+		QuatTimesVec3(box->rotation, normal, &tmpNormal);
+		*normal = tmpNormal;
+		return true;
+	}
+	return false;
 }

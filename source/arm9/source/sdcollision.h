@@ -41,10 +41,8 @@ typedef struct {
 
 typedef struct {
 	Vec3* position;
-	m4x4 alignment;
 	Vec3 extents;
 	Quaternion* rotation;
-	bool dirtyTransform;
 } CollisionBox;
 
 bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration);
@@ -63,12 +61,14 @@ unsigned int* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCo
 
 void DestroyCollisionMesh(MeshCollider* meshCollider);
 
-bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, f32* t);
+bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t);
 
 bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere, f32* t, Vec3* hitPos);
 
 bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f32* t, Vec3* hitPos);
 
 bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* rayMax, MeshCollider* mesh, Vec3* meshOffset, Vec3* meshScale, Quaternion* meshRotation, f32* t, Vec3* hitPos, Vec3* normal, int* triId);
+
+bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3* normal, f32* t);
 
 #endif
