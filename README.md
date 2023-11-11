@@ -15,7 +15,9 @@ Features:
 
 -Sphere on sphere collision
 
--Ray on mesh & sphere collision
+-Sphere on box collision
+
+-Ray on mesh, sphere, and box collision
 
 Audio:
 
