@@ -32,8 +32,10 @@
     <ClCompile Include="..\arm9\source\sddelta.c" />
     <ClCompile Include="..\arm9\source\sdfile.c" />
     <ClCompile Include="..\arm9\source\sdmath.c" />
+    <ClCompile Include="..\arm9\source\sdnetworking.c" />
     <ClCompile Include="..\arm9\source\sdobject.c" />
     <ClCompile Include="..\arm9\source\sdrender.c" />
+    <ClCompile Include="..\arm9\source\sdsocket.c" />
     <ClCompile Include="..\arm9\source\sdsound.c" />
     <ClCompile Include="..\VSDeps\nds.c" />
   </ItemGroup>
@@ -50,8 +52,10 @@
     <ClInclude Include="..\arm9\source\sddelta.h" />
     <ClInclude Include="..\arm9\source\sdfile.h" />
     <ClInclude Include="..\arm9\source\sdmath.h" />
+    <ClInclude Include="..\arm9\source\sdnetworking.h" />
     <ClInclude Include="..\arm9\source\sdobject.h" />
     <ClInclude Include="..\arm9\source\sdrender.h" />
+    <ClInclude Include="..\arm9\source\sdsocket.h" />
     <ClInclude Include="..\arm9\source\sdsound.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

@@ -6,6 +6,7 @@
 #define KEYB_DOWN 264
 #define KEYB_UP 265
 #define KEYB_ENTER 257
+#define KEYB_RSHIFT 344
 
 int InitializeGraphics();
 

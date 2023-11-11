@@ -84,6 +84,12 @@
     <ClCompile Include="..\VSDeps\nds.c">
       <Filter>Source Files\PC</Filter>
     </ClCompile>
+    <ClCompile Include="..\arm9\source\sdnetworking.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\arm9\source\sdsocket.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\arm9\source\sdcollision.h">
@@ -130,6 +136,12 @@
     </ClInclude>
     <ClInclude Include="..\arm9\source\PC\Renderer\OpenGL\OpenGLRenderer.h">
       <Filter>Header Files\PC\Renderer\OpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdnetworking.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\arm9\source\sdsocket.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
