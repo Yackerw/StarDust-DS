@@ -225,6 +225,7 @@ void StartNetworking(bool host, char* ip, int port, NetworkInstance* instance) {
 		BindSocketAbstract(instance->socket, instance->localEndPoint);
 		instance->clientNode = -1;
 		instance->clientID = rand();
+		instance->clientsUsed[0] = true;
 	}
 	else {
 		// send a connection packet
