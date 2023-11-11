@@ -103,6 +103,9 @@ int main() {
 #ifdef _WIN32
 	WindowsInitialization();
 #endif
+
+	InitializeNetworking(1, 1);
+
 	InitializeAsyncFiles();
 
 	InitializeSubBG();
