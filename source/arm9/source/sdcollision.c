@@ -5,7 +5,7 @@
 #define OCTREE_MAX_DEPTH 10
 #define OCTREE_MAX_TRIS 40
 // note: barely noticeable slowdown from this, and fixes a bug with large polygons
-#define BARY64
+#define FLOATBARY
 
 float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 	return x1 * x2 + y1 * y2 + z1 * z2;
@@ -178,6 +178,12 @@ bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec
 	return false;
 }
 
+#ifndef _NOTDS
+long long dot64_2(long long x1, long long y1, long long z1, long long x2, long long y2, long long z2) {
+	return mulf64(x1, x2) + mulf64(y1, y2) + mulf64(z1, z2);
+}
+#endif
+
 bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane) {
 	// adjust sphere so triangle is origin
 	Vec3 newSpherePosition;
@@ -289,6 +295,15 @@ bool AABBCheck(Vec3 *minA, Vec3 *maxA, Vec3 *minB, Vec3 *maxB) {
 		maxA->z >= minB->z);
 }
 
+bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 leniency) {
+	return (minA->x <= maxB->x + leniency &&
+		maxA->x >= minB->x - leniency &&
+		minA->y <= maxB->y + leniency &&
+		maxA->y >= minB->y - leniency &&
+		minA->z <= maxB->z + leniency &&
+		maxA->z >= minB->z - leniency);
+}
+
 void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currDepth) {
 	++currDepth;
 	currBlock->subdivided = false;
@@ -297,7 +312,12 @@ void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currD
 	currBlock->triangleList = (unsigned int*)malloc(sizeof(unsigned int) * maxTris);
 	// iterate over all the collision triangles in the mesh and see if they fall within the block
 	for (int i = 0; i < currMesh->triCount; ++i) {
+#ifdef _NOTDS
 		if (AABBCheck(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax)) {
+#else
+		// fixes occasionally broken faces on DS
+		if (AABBCheckLeniency(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax, 1)) {
+#endif
 			currBlock->triangleList[currBlock->triCount] = i;
 			++currBlock->triCount;
 			// max tris, either start a new subdivision or increase tri count
@@ -455,9 +475,9 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					// reverse winding if it's a strip
 					if (currVertexGroup->bitFlags & VTX_STRIPS) {
 						Vec3 tmp = retValue->triangles[currTri].verts[0];
-						retValue->triangles[currTri].verts[0] = retValue->triangles[currTri].verts[2];
-						retValue->triangles[currTri].verts[2] = tmp;
-						retValue->triangles[currTri].verts[1] = retValue->triangles[currTri - 1].verts[1];
+						retValue->triangles[currTri].verts[0] = retValue->triangles[currTri - 1].verts[1];
+						retValue->triangles[currTri].verts[1] = tmp;
+						retValue->triangles[currTri].verts[2] = retValue->triangles[currTri - 1].verts[2];
 					}
 					retValue->triangles[currTri].boundsMax.x = -4000000;
 					retValue->triangles[currTri].boundsMax.y = -4000000;
@@ -467,12 +487,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].boundsMin.z = 4000000;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
-						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
-						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, retValue->triangles[currTri].verts[k].z);
+						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, retValue->triangles[currTri].verts[k].z);
 					}
 					// calculate normal
 					NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
@@ -495,9 +515,9 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					// adjust j position
 					j -= 1;
 
-					retValue->triangles[currTri].verts[2] = quad[0];
-					retValue->triangles[currTri].verts[1] = quad[1];
 					retValue->triangles[currTri].verts[0] = quad[2];
+					retValue->triangles[currTri].verts[1] = quad[1];
+					retValue->triangles[currTri].verts[2] = quad[0];
 					retValue->triangles[currTri].boundsMax.x = -4000000;
 					retValue->triangles[currTri].boundsMax.y = -4000000;
 					retValue->triangles[currTri].boundsMax.z = -4000000;
@@ -506,19 +526,19 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].boundsMin.z = 4000000;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
-						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
-						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, retValue->triangles[currTri].verts[k].z);
+						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, retValue->triangles[currTri].verts[k].z);
 					}
 					// calculate normal
 					NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
 					currTri += 1;
+					retValue->triangles[currTri].verts[0] = quad[1];
+					retValue->triangles[currTri].verts[1] = quad[2];
 					retValue->triangles[currTri].verts[2] = quad[3];
-					retValue->triangles[currTri].verts[1] = retValue->triangles[currTri - 1].verts[0];
-					retValue->triangles[currTri].verts[0] = retValue->triangles[currTri - 1].verts[2];
 					retValue->triangles[currTri].boundsMax.x = -4000000;
 					retValue->triangles[currTri].boundsMax.y = -4000000;
 					retValue->triangles[currTri].boundsMax.z = -4000000;
@@ -527,12 +547,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].boundsMin.z = 4000000;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
-						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, currVerts[j + k].z);
-						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, currVerts[j + k].x);
-						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, currVerts[j + k].y);
-						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, currVerts[j + k].z);
+						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMax.y = Max(retValue->triangles[currTri].boundsMax.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMax.z = Max(retValue->triangles[currTri].boundsMax.z, retValue->triangles[currTri].verts[k].z);
+						retValue->triangles[currTri].boundsMin.x = Min(retValue->triangles[currTri].boundsMin.x, retValue->triangles[currTri].verts[k].x);
+						retValue->triangles[currTri].boundsMin.y = Min(retValue->triangles[currTri].boundsMin.y, retValue->triangles[currTri].verts[k].y);
+						retValue->triangles[currTri].boundsMin.z = Min(retValue->triangles[currTri].boundsMin.z, retValue->triangles[currTri].verts[k].z);
 					}
 					// calculate normal
 					NormalFromVertsFloat(&retValue->triangles[currTri].verts[0], &retValue->triangles[currTri].verts[1], &retValue->triangles[currTri].verts[2], &retValue->triangles[currTri].normal);
@@ -732,7 +752,6 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	}
 	// who cares if it gets truncated
 	long long dist;
-	f32 dist;
 	if (tNear < 0) {
 		dist = tFar;
 	}

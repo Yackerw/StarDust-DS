@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "sdmath.h"
 #include <string.h>
+#include <stdlib.h>
 
 // used internally for one function lmao
 typedef struct {
@@ -795,6 +796,43 @@ void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut) {
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[6]);
 	workVec.z = Fixed32ToNative(4096);
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[7]);
+}
+
+int sign(int value) {
+	if (value < 0) { return -1; }
+	else { return 1; }
+}
+
+void QuaternionToEuler(Quaternion* quaternion, Vec3* euler) {
+	// Roll (x-axis rotation)
+	f32 sinr_cosp = mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->w, quaternion->x) + mulf32(quaternion->y, quaternion->z)));
+	f32 cosr_cosp = Fixed32ToNative(4096) - mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->x, quaternion->x) + mulf32(quaternion->y, quaternion->y)));
+	euler->x = Atan2(sinr_cosp, cosr_cosp);
+
+	// Pitch (y-axis rotation)
+	f32 sinp = mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->w, quaternion->y) - mulf32(quaternion->z, quaternion->x)));
+	if (f32abs(sinp) >= Fixed32ToNative(4096))
+		euler->y = PI / 2 * sign(sinp); // use 90 degrees if out of range
+	else
+		euler->y = asinLerp(sinp);
+
+	// Yaw (z-axis rotation)
+	f32 siny_cosp = mulf32(Fixed32ToNative(4096 * 2), (mulf32(quaternion->w, quaternion->z) + mulf32(quaternion->x, quaternion->y)));
+	f32 cosy_cosp = Fixed32ToNative(4096) - mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->y, quaternion->y) + mulf32(quaternion->z, quaternion->z)));
+	euler->z = Atan2(siny_cosp, cosy_cosp);
+}
+
+f32 f32rand(f32 min, f32 max) {
+#ifndef _NOTDS
+	// simple int rand
+	return (rand() % (max - min)) + min;
+#else
+	// convert to 0-1 and then min max it
+	float rng = rand() / (float)RAND_MAX;
+	rng *= max - min;
+	rng += min;
+	return rng;
+#endif
 }
 
 #ifndef _NOTDS

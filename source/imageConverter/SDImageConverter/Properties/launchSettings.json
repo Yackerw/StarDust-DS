@@ -2,7 +2,7 @@
   "profiles": {
     "SDImageConverter": {
       "commandName": "Project",
-      "commandLineArgs": "-t8 fonttest.png"
+      "commandLineArgs": "-pc4 transtest.png"
     }
   }
 }

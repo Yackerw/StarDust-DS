@@ -60,6 +60,7 @@ typedef struct {
 } ViewFrustum;
 
 #ifndef _NOTDS
+#define PI 12868
 #define FixedDegreesToRotation 91
 #define FixedRadiansToRotation 5215
 #define RotationToFixedRadians 3217
@@ -157,6 +158,10 @@ void MatrixTimesVec3(m4x4* left, Vec3* right, Vec3* ret);
 f32 f32abs(f32 input);
 
 void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut);
+
+void QuaternionToEuler(Quaternion* quat, Vec3* euler);
+
+f32 f32rand(f32 min, f32 max);
 
 #ifndef _NOTDS
 long long Int64Div(int left, int right);

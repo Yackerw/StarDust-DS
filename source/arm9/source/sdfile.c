@@ -89,6 +89,7 @@ void AsyncFileHandler() {
 			glFlush(0);
 			swiWaitForVBlank();
 			vBlankedThisFrame = true;
+			vBlanked = true;
 		}
 	}
 	if (!vBlankedThisFrame) {
@@ -169,7 +170,7 @@ void CancelAsyncRead(int id) {
 	}
 }
 
-void CheckAsyncReadRunning(int id) {
+bool CheckAsyncReadRunning(int id) {
 	AsyncReadData* ard = firstAsyncRead.next;
 	while (ard != NULL) {
 		if (ard->id == id) {

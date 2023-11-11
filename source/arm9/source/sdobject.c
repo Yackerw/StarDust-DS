@@ -13,7 +13,18 @@ void(*lateUpdateFuncs[256])(Object*);
 void(*startFuncs[256])(Object*);
 bool(*collisionFuncs[256])(Object*, CollisionHit*);
 void(*destroyFuncs[256])(Object*);
+void(*networkCreateFuncs[256])(Object*, void**, int*);
+void(*networkCreateReceiveFuncs[256])(Object*, void*, int);
+void(*networkPacketReceiveFuncs[256])(Object*, void*, int, int, int);
+bool networkedObjectTypes[256];
 int currFunc;
+
+int objPacketId;
+int objCreateId;
+int objStopSyncId;
+
+ObjectPtr* networkedObjects;
+int networkedObjectsCount;
 
 bool layerCollision[1024];
 
@@ -21,6 +32,12 @@ void DestroyObjectInternal(Object *object) {
 	if (destroyFuncs[object->objectType] != NULL) {
 		destroyFuncs[object->objectType](object);
 	}
+
+	// if it's synced, stop syncing it
+	if (object->netId != -1) {
+		StopSyncingObject(object);
+	}
+
 	if (object->next != NULL) {
 		object->next->previous = object->previous;
 	}
@@ -202,7 +219,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 					hitInfos[objsFound].penetration = mulf32(hitInfos[objsFound].penetration, meshObject->scale.x);
 					hitInfos[objsFound].colliderType = COLLIDER_MESH;
 					++objsFound;
-					if (objsFound >= maxHit) return true;
+					if (objsFound >= maxHit) return objsFound;
 					trisToCollideWith[i] = -1;
 				}
 				if (!onPlane) {
@@ -218,7 +235,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 					hitInfos[objsFound].penetration = mulf32(hitInfos[objsFound].penetration, meshObject->scale.x);
 					hitInfos[objsFound].colliderType = COLLIDER_MESH;
 					++objsFound;
-					if (objsFound >= maxHit) return true;
+					if (objsFound >= maxHit) return objsFound;
 					trisToCollideWith[i] = -1;
 				}
 			}
@@ -231,7 +248,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 					hitInfos[objsFound].penetration = mulf32(hitInfos[objsFound].penetration, meshObject->scale.x);
 					hitInfos[objsFound].colliderType = COLLIDER_MESH;
 					++objsFound;
-					if (objsFound >= maxHit) return true;
+					if (objsFound >= maxHit) return objsFound;
 				}
 			}
 			free(trisToCollideWith);
@@ -241,8 +258,21 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 				hitInfos[objsFound].hitTri = -1;
 				hitInfos[objsFound].hitObject = meshObject;
 				hitInfos[objsFound].colliderType = COLLIDER_SPHERE;
+				f32 positionValue = sphere->radius - hitInfos[objsFound].penetration;
+				hitInfos[objsFound].hitPos.x = sphere->position->x + mulf32(positionValue, hitInfos[objsFound].normal.x);
+				hitInfos[objsFound].hitPos.y = sphere->position->y + mulf32(positionValue, hitInfos[objsFound].normal.y);
+				hitInfos[objsFound].hitPos.z = sphere->position->z + mulf32(positionValue, hitInfos[objsFound].normal.z);
 				++objsFound;
-				if (objsFound >= maxHit) return true;
+				if (objsFound >= maxHit) return objsFound;
+			}
+		}
+		else if (meshObject->boxCol != NULL) {
+			if (SphereOnOBB(sphere, meshObject->boxCol, &hitInfos[objsFound].hitPos, &hitInfos[objsFound].normal, &hitInfos[objsFound].penetration)) {
+				hitInfos[objsFound].hitTri = -1;
+				hitInfos[objsFound].hitObject = meshObject;
+				hitInfos[objsFound].colliderType = COLLIDER_BOX;
+				++objsFound;
+				if (objsFound >= maxHit) return objsFound;
 			}
 		}
 		meshObject = meshObject->next;
@@ -405,6 +435,11 @@ int GetObjectsOfType(int type, Object **out, int maxObjects) {
 }
 
 void ProcessObjects() {
+	// update networking before everything else
+	if (defaultNetInstance != NULL) {
+		UpdateNetworking(defaultNetInstance, deltaTime);
+	}
+
 	Object *currObject = firstObject.next;
 	while (currObject != NULL) {
 		// TODO; functions
@@ -515,18 +550,27 @@ void ProcessObjects() {
 #endif
 }
 
-int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, CollisionHit*), void(*lateUpdate)(Object*), void(*destroy)(Object*)) {
+int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, CollisionHit*), void(*lateUpdate)(Object*), void(*destroy)(Object*), void(*networkCreateSend)(Object*, void**, int*),
+	void (*networkCreateReceive)(Object*, void*, int), void(*networkPacketReceive)(Object*, void**, int, int, int), bool networked) {
 	updateFuncs[currFunc] = update;
 	startFuncs[currFunc] = start;
 	collisionFuncs[currFunc] = collision;
 	lateUpdateFuncs[currFunc] = lateUpdate;
 	destroyFuncs[currFunc] = destroy;
+	networkCreateFuncs[currFunc] = networkCreateSend;
+	networkCreateReceiveFuncs[currFunc] = networkCreateReceive;
+	networkPacketReceiveFuncs[currFunc] = networkPacketReceive;
+	networkedObjectTypes[currFunc] = networked;
+
 	int retValue = currFunc;
 	++currFunc;
 	return retValue;
 }
 
-Object *CreateObject(int type, Vec3 *position) {
+Object *CreateObject(int type, Vec3 *position, bool forced) {
+	if (!(forced || defaultNetInstance == NULL || (!defaultNetInstance->active || defaultNetInstance->host)) && networkedObjectTypes[type]) {
+		return NULL;
+	}
 	Object *newObj = calloc(sizeof(Object), 1);
 	newObj->position.x = position->x;
 	newObj->position.y = position->y;
@@ -549,6 +593,49 @@ Object *CreateObject(int type, Vec3 *position) {
 	newObj->dirtyTransform = true;
 	newObj->references.object = newObj;
 	newObj->active = true;
+	if (!defaultNetInstance == NULL && networkedObjectTypes[type] && defaultNetInstance->host && defaultNetInstance->active) {
+		// find first unused networked object slot
+		int objSlot = 0;
+		while (objSlot < networkedObjectsCount) {
+			if (networkedObjects[objSlot].object == NULL) {
+				break;
+			}
+			++objSlot;
+		}
+		if (objSlot == networkedObjectsCount) {
+			if (networkedObjectsCount == 0) {
+				// 64 initial networked objects available
+				networkedObjectsCount = 32;
+			}
+			networkedObjects = realloc(networkedObjects, sizeof(ObjectPtr) * networkedObjectsCount * 2);
+			networkedObjectsCount *= 2;
+			for (int i = objSlot; i < networkedObjectsCount; ++i) {
+				networkedObjects[i].object = NULL;
+			}
+		}
+		newObj->netId = objSlot;
+		GetObjectPtr(newObj, &networkedObjects[objSlot]);
+		void* syncData = NULL;
+		int syncDataLen = 0;
+		if (networkCreateFuncs[type] != NULL) {
+			networkCreateFuncs[type](newObj, &syncData, &syncDataLen);
+		}
+		char* objectCreateData;
+		// 0x0: object id
+		// 0x4: object type
+		objectCreateData = (char*)malloc(syncDataLen + sizeof(int) + sizeof(int));
+		if (syncDataLen != 0) {
+			memcpy(&objectCreateData[8], syncData, syncDataLen);
+			free(syncData);
+		}
+		((int*)objectCreateData)[0] = objSlot;
+		((int*)objectCreateData)[1] = type;
+		PacketSendAll(objectCreateData, syncDataLen + sizeof(int) + sizeof(int), objCreateId, true, defaultNetInstance);
+		free(objectCreateData);
+	}
+	else {
+		newObj->netId = -1;
+	}
 	return newObj;
 }
 
@@ -581,4 +668,127 @@ void FreeObjectPtr(ObjectPtr* ptr) {
 		ptr->next->prev = ptr->prev;
 	}
 	ptr->object = NULL;
+}
+
+void SyncObjectPacketSend(Object* object, void* data, int dataLen, unsigned short type, bool important) {
+	if (object->netId == -1 || !defaultNetInstance->active) return;
+	char* ou = (char*)malloc(dataLen + sizeof(int) * 3);
+	((int*)ou)[0] = object->netId;
+	((int*)ou)[1] = defaultNetInstance->clientNode;
+	((unsigned short*)ou)[4] = type;
+	((bool*)ou)[10] = important;
+	if (data != NULL && dataLen != 0) {
+		memcpy(&((char*)ou)[12], data, dataLen);
+	}
+	PacketSendAll(ou, dataLen + sizeof(int) * 3, objPacketId, important, defaultNetInstance);
+}
+
+void SyncObjectPacketReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
+	if (!instance->host) {
+		node = ((int*)data)[1];
+	}
+	// don't process packets we send ourselves
+	if (node == instance->clientNode) {
+		return;
+	}
+	int netId = ((int*)data)[0];
+	// sanity check
+	if (netId < 0 || netId > networkedObjectsCount || networkedObjects[netId].object == NULL) {
+		return;
+	}
+	Object* obj = networkedObjects[netId].object;
+	if (obj == NULL) {
+		return;
+	}
+	if (networkPacketReceiveFuncs[obj->objectType] != NULL) {
+		networkPacketReceiveFuncs[obj->objectType](obj, (void*)&((char*)data)[12], dataLen - 12, node, ((unsigned short*)data)[4]);
+	}
+	// relay packet if we're host
+	if (instance->host) {
+		PacketSendAll(data, dataLen, objPacketId, ((bool*)data)[10], instance);
+	}
+}
+
+void SyncObjectCreateReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
+	// host should authenticate all object creations!
+	if (instance->host) {
+		return;
+	}
+	int netId = ((int*)data)[0];
+	int objId = ((int*)data)[1];
+	Vec3 zeroVec = { 0, 0, 0 };
+	Object* newObj = CreateObject(objId, &zeroVec, true);
+	// overwrite old object if it exists, allocate memory, etc
+	while (netId >= networkedObjectsCount) {
+		int prevObjCount = networkedObjectsCount;
+		if (networkedObjectsCount == 0) {
+			networkedObjectsCount = 32;
+		}
+		networkedObjects = realloc(networkedObjects, sizeof(ObjectPtr) * networkedObjectsCount * 2);
+		networkedObjectsCount *= 2;
+		for (int i = prevObjCount; i < networkedObjectsCount; ++i) {
+			networkedObjects[i].object = NULL;
+		}
+	}
+	if (networkedObjects[netId].object != NULL) {
+		networkedObjects[netId].object->netId = -1;
+		FreeObjectPtr(&networkedObjects[netId]);
+	}
+	GetObjectPtr(newObj, &networkedObjects[netId]);
+	if (networkCreateReceiveFuncs[objId] != NULL) {
+		networkCreateReceiveFuncs[objId](newObj, (void*)&((char*)data)[8], dataLen - 8);
+	}
+}
+
+void SyncObjectStopSyncReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
+	// host authentication!
+	if (instance->host) {
+		return;
+	}
+	int netId = ((int*)data)[0];
+	// sanity check
+	if (netId < 0 || netId >= networkedObjectsCount) {
+		return;
+	}
+	FreeObjectPtr(&networkedObjects[netId]);
+}
+
+void StopSyncingObject(Object* obj) {
+	if (obj->netId < 0 || obj->netId >= networkedObjectsCount) {
+		return;
+	}
+	// sync that we should stop syncing this
+	if (defaultNetInstance->host) {
+		PacketSendAll(&obj->netId, 4, objStopSyncId, true, defaultNetInstance);
+	}
+	FreeObjectPtr(&networkedObjects[obj->netId]);
+	obj->netId = -1;
+}
+
+void SyncAllObjects(int node) {
+	if (!defaultNetInstance->host) {
+		return;
+	}
+	for (int i = 0; i < networkedObjectsCount; ++i) {
+		if (networkedObjects[i].object != NULL) {
+			void* data = NULL;
+			int dataLen = 0;
+			if (networkCreateFuncs[networkedObjects[i].object->objectType] != NULL) {
+				networkCreateFuncs[networkedObjects[i].object->objectType](networkedObjects[i].object, &data, &dataLen);
+			}
+			char* ou = malloc(dataLen + sizeof(int) * 2);
+			// 0x0: object id
+			// 0x4: object type
+			((int*)ou)[0] = i;
+			((int*)ou)[1] = networkedObjects[i].object->objectType;
+			if (dataLen != 0) {
+				memcpy(&ou[8], data, dataLen);
+			}
+			PacketSendTo(ou, dataLen + sizeof(int) * 2, objCreateId, true, node, defaultNetInstance);
+		}
+	}
+}
+
+void DestroyObjectImmediate(Object* object) {
+	DestroyObjectInternal(object);
 }

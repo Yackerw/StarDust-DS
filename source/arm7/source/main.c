@@ -219,7 +219,9 @@ int main() {
 
 	SetYtrigger(80);
 
-	installWifiFIFO();
+	if (isDSiMode()) {
+		installWifiFIFO();
+	}
 	// ??? audio stops working without this
 	installSoundFIFO();
 

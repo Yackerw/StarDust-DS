@@ -13,7 +13,7 @@ void AsyncFileHandler();
 
 void CancelAsyncRead(int id);
 
-void CheckAsyncReadRunning(int id);
+bool CheckAsyncReadRunning(int id);
 
 void InitializeAsyncFiles();
 

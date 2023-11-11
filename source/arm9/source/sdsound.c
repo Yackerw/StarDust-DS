@@ -352,6 +352,12 @@ SoundEffect* LoadWav(char* input) {
 	fread_MusicYielding(audioInfo->samples, wavHeader.dataSize, 1, f);
 	fclose(f);
 #ifndef _NOTDS
+	// convert unsigned 8 bit to signed 8 bit
+	if (audioInfo->bytesPerSample == 1) {
+		for (int i = 0; i < audioInfo->dataSize; ++i) {
+			audioInfo->samples[i] += 128;
+		}
+	}
 	DC_FlushRange(audioInfo->samples, wavHeader.dataSize);
 #endif
 	audioInfo->streamed = false;

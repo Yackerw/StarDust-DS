@@ -1657,7 +1657,7 @@ void UploadTexture(Texture* input) {
 	nativeTexture->color = nativeColors;
 	nativeTexture->width = width;
 	nativeTexture->height = height;
-	UpdateTexture(nativeTexture, false, MIN_LINEAR, MAG_LINEAR);
+	UpdateTexture(nativeTexture, false, MIN_NEAREST, MAG_NEAREST);
 	input->nativeTexture = nativeTexture;
 	input->uploaded = true;
 }
@@ -2496,7 +2496,7 @@ Sprite* LoadSprite(char* input, bool sub, bool upload) {
 	char* newInput = DirToNative(input);
 	FILE* f = fopen(newInput, "rb");
 	free(newInput);
-	if (f == NULL) {
+	if (f == NULL) {;
 		return NULL;
 	}
 	fseek(f, 0, SEEK_END);

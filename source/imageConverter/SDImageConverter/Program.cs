@@ -453,13 +453,13 @@ namespace SDImageConverter
 					return;
 					break;
 			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
 			byte[] processedData = new byte[pi.pixelIndexes.Count];
 			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
 			{
 				processedData[i] = (byte)(pi.pixelIndexes[i]);
 			}
-			// palette data now
-			ushort[] paletteData = ConvertPalette(pi);
 			if (paletteData.Length < 256)
 			{
 				Array.Resize(ref paletteData, 256);
@@ -585,6 +585,8 @@ namespace SDImageConverter
 					return;
 					break;
 			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
 			byte[] processedData = new byte[pi.pixelIndexes.Count / 2];
 			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
 			{
@@ -596,8 +598,6 @@ namespace SDImageConverter
 					processedData[i / 2] |= (byte)(pi.pixelIndexes[i] << 4);
 				}
 			}
-			// palette data now
-			ushort[] paletteData = ConvertPalette(pi);
 			if (paletteData.Length < 16)
 			{
 				Array.Resize(ref paletteData, 16);
@@ -679,6 +679,7 @@ namespace SDImageConverter
 						newPaletteData[currPalettePos] = paletteData[j];
 						currPalettePos += 1;
 					}
+					paletteData = newPaletteData;
 
 					// remap the pixel indices now
 					for (int j = 0; j < pi.pixelIndexes.Count; ++j)
@@ -717,13 +718,13 @@ namespace SDImageConverter
 				Console.WriteLine("Tiled images must have a resolution that's a multiple of 8!");
 				return;
 			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
 			byte[] processedData = new byte[pi.pixelIndexes.Count];
 			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
 			{
 				processedData[i] = (byte)(pi.pixelIndexes[i]);
 			}
-			// palette data now
-			ushort[] paletteData = ConvertPalette(pi);
 			if (paletteData.Length < 256)
 			{
 				Array.Resize(ref paletteData, 256);
@@ -859,6 +860,8 @@ namespace SDImageConverter
 			{
 				Console.WriteLine("Invalid sprite resolution");
 			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
 			byte[] processedData = new byte[pi.pixelIndexes.Count / 2];
 			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
 			{
@@ -871,8 +874,6 @@ namespace SDImageConverter
 					processedData[i / 2] |= (byte)(pi.pixelIndexes[i] << 4);
 				}
 			}
-			// palette data now
-			ushort[] paletteData = ConvertPalette(pi);
 			if (paletteData.Length < 16)
 			{
 				Array.Resize(ref paletteData, 16);
@@ -972,13 +973,13 @@ namespace SDImageConverter
 			{
 				Console.WriteLine("Invalid sprite resolution");
 			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
 			byte[] processedData = new byte[pi.pixelIndexes.Count];
 			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
 			{
 				processedData[i] = (byte)(pi.pixelIndexes[i]);
 			}
-			// palette data now
-			ushort[] paletteData = ConvertPalette(pi);
 			if (paletteData.Length < 256)
 			{
 				Array.Resize(ref paletteData, 256);
