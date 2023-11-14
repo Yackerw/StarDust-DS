@@ -4,6 +4,7 @@
 #include <maxmod7.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
 	int type;
@@ -28,9 +29,9 @@ int mulf32(int left, int right) {
 
 typedef struct {
 	bool stereo;
-	uint sampleRate;
+	uint32_t sampleRate;
 	int bytesPerSample;
-	uint dataSize;
+	uint32_t dataSize;
 	bool streamed;
 	int fOffset;
 	union {

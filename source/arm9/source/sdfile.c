@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <nds.h>
 #include "sdsound.h"
+#include <stdint.h>
 
 typedef struct AsyncReadData AsyncReadData;
 
@@ -34,7 +35,7 @@ void fread_MusicYielding(void* buffer, int size, int count, FILE* f) {
 	size *= count;
 	while (size > 0x10000) {
 		fread(buffer, size, 1, f);
-		buffer = (uint)buffer + 0x10000;
+		buffer = (uint32_t)buffer + 0x10000;
 		size -= 0x10000;
 		UpdateMusicBuffer();
 	}
@@ -71,7 +72,7 @@ void AsyncFileHandler() {
 		if (ard != NULL) {
 			if (ard->size > 0x400) {
 				fread(ard->buffer, 0x400, 1, ard->f);
-				ard->buffer = (void*)((uint)ard->buffer + 0x400);
+				ard->buffer = (void*)((uint32_t)ard->buffer + 0x400);
 				ard->size -= 0x400;
 			}
 			else {

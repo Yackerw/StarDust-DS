@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "sdfile.h"
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct {
 	Vec3 position;
@@ -135,11 +136,11 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	Model* retValue = model;
 	char* input = textureDir;
 	retValue->vertexGroups = (VertexHeader*)((unsigned int)retValue->vertexGroups + (unsigned int)retValue);
-	retValue->defaultMats = (SDMaterial*)((uint)retValue + (uint)retValue->defaultMats);
-	retValue->materialTextureNames = (char*)((uint)retValue + (uint)retValue->materialTextureNames);
+	retValue->defaultMats = (SDMaterial*)((uint32_t)retValue + (uint32_t)retValue->defaultMats);
+	retValue->materialTextureNames = (char*)((uint32_t)retValue + (uint32_t)retValue->materialTextureNames);
 	if (retValue->skeleton != NULL)
 	{
-		retValue->skeleton = (Bone*)((uint)retValue + (uint)retValue->skeleton);
+		retValue->skeleton = (Bone*)((uint32_t)retValue + (uint32_t)retValue->skeleton);
 		for (int i = 0; i < retValue->skeletonCount; ++i) {
 			m4x4 tempMtx;
 			MatrixToDSMatrix(&retValue->skeleton[i].inverseMatrix, &tempMtx);
@@ -211,7 +212,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	VertexHeader* currHeader = retValue->vertexGroups;
 	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
 		vertCount += currHeader->count;
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	Vec3* nativeVerts = (Vec3*)malloc(sizeof(Vec3) * vertCount);
 	int currVert = 0;
@@ -224,7 +225,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 			nativeVerts[currVert].z = Fixed32ToNative(verts[j].z);
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	SetMeshVertices(nativeModel, nativeVerts, vertCount);
 	// UVs
@@ -245,7 +246,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 			nativeUVs[currVert].y = (verts[j].v / 16.0f) / VDivider;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	SetMeshUVs(nativeModel, nativeUVs, vertCount);
 	free(nativeVerts);
@@ -257,7 +258,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
 		Vertex* verts = (Vertex*)&currHeader->vertices;
 		for (int j = 0; j < currHeader->count; ++j) {
-			uint norm = verts[j].normal;
+			uint32_t norm = verts[j].normal;
 			int x = norm & 0x3FF;
 			if (x & 0x200) {
 				x = 0x1FF - (x & 0x1FF);
@@ -278,7 +279,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 			nativeNormals[currVert].z = z / 511.0f;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	nativeModel->normals = nativeNormals;
 	nativeModel->normalCount = vertCount;
@@ -298,7 +299,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 			boneWeights[currVert * 4] = 1.0f;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	nativeModel->boneIndex = boneIDs;
 	nativeModel->weights = boneWeights;
@@ -314,7 +315,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 			++materialChangeCount;
 			prevQuad = currHeader->bitFlags & VTX_QUAD;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 
 	prevQuad = 0;
@@ -349,7 +350,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 				}
 			}
 			prevQuad = currHeader->bitFlags & VTX_QUAD;
-			headerIterator = (VertexHeader*)((uint)(&(headerIterator->vertices)) + (uint)(sizeof(Vertex) * headerIterator->count));
+			headerIterator = (VertexHeader*)((uint32_t)(&(headerIterator->vertices)) + (uint32_t)(sizeof(Vertex) * headerIterator->count));
 		}
 		int* tris = (int*)calloc(sizeof(int) * triCount, 1);
 		int triPos = 0;
@@ -437,7 +438,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 					}
 				}
 			}
-			currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+			currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 			++i;
 		}
 		SetSubmeshTriangles(nativeModel, subMeshId, tris, triCount);
@@ -512,7 +513,7 @@ Model* FreeModelKeepCache(Model* model) {
 		currHeader->bitFlags = modelHeader->bitFlags;
 		currHeader->count = 0;
 		currHeader = &currHeader->vertices;
-		modelHeader = (VertexHeader*)((uint)(&(modelHeader->vertices)) + (uint)(sizeof(Vertex) * (modelHeader->count)));
+		modelHeader = (VertexHeader*)((uint32_t)(&(modelHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (modelHeader->count)));
 	}
 	retValue->version = 0x80000000 | model->version;
 	free(model);
@@ -683,8 +684,8 @@ void CacheRiggedModel(Model* reference) {
 		int vertCount = currHeader->count;
 		if (vertCount == 0) {
 			dsnm.FIFOBatches[i] = NULL;
-			uint toAdd = (sizeof(Vertex) * (currHeader->count));
-			currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+			uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
+			currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
 			continue;
 		}
 		// ack...
@@ -805,8 +806,8 @@ void CacheRiggedModel(Model* reference) {
 			FIFOBatch[storedBatchPosition] = FIFO_COMMAND_PACK(toPack[0], toPack[1], toPack[2], toPack[3]);
 		}
 		dsnm.FIFOBatches[i] = FIFOBatch;
-		uint toAdd = (sizeof(Vertex) * (currHeader->count));
-		currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+		uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
+		currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
 	}
 	reference->NativeModel = malloc(sizeof(DSNativeModel));
 	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
@@ -831,8 +832,8 @@ void CacheModel(Model* reference) {
 		int vertCount = currHeader->count;
 		if (vertCount == 0) {
 			dsnm.FIFOBatches[i] = NULL;
-			uint toAdd = (sizeof(Vertex) * (currHeader->count));
-			currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+			uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
+			currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
 			continue;
 		}
 		// each vertex makes 3/4ths of a FIFOLookup, so multiply by 3, then modulo by 4 to get the remaining number of NOPs we need
@@ -932,8 +933,8 @@ void CacheModel(Model* reference) {
 			FIFOLookupId %= 3;
 		}
 		dsnm.FIFOBatches[i] = FIFOBatch;
-		uint toAdd = (sizeof(Vertex) * (currHeader->count));
-		currHeader = (VertexHeader*)(((uint)(&(currHeader->vertices))) + toAdd);
+		uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
+		currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
 	}
 	reference->NativeModel = malloc(sizeof(DSNativeModel));
 	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
@@ -948,7 +949,7 @@ void UpdateModel(Model* model) {
 	VertexHeader* currHeader = model->vertexGroups;
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
 		vertCount += currHeader->count;
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 
 	// copy verts
@@ -963,7 +964,7 @@ void UpdateModel(Model* model) {
 			nativeVerts[currVert].z = Fixed32ToNative(verts[j].z);
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	SetMeshVertices(nativeModel, nativeVerts, vertCount);
 	free(nativeVerts);
@@ -987,7 +988,7 @@ void UpdateModel(Model* model) {
 			nativeUVs[currVert].y = (verts[j].v / 16.0f) / VDivider;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	SetMeshUVs(nativeModel, nativeUVs, vertCount);
 	free(nativeUVs);
@@ -999,7 +1000,7 @@ void UpdateModel(Model* model) {
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
 		Vertex* verts = (Vertex*)&currHeader->vertices;
 		for (int j = 0; j < currHeader->count; ++j) {
-			uint norm = verts[j].normal;
+			uint32_t norm = verts[j].normal;
 			int x = norm & 0x3FF;
 			if (x & 0x200) {
 				x = 0x1FF - (x & 0x1FF);
@@ -1020,7 +1021,7 @@ void UpdateModel(Model* model) {
 			nativeNormals[currVert].z = z / 511.0f;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	nativeModel->normals = nativeNormals;
 	nativeModel->normalCount = vertCount;
@@ -1040,7 +1041,7 @@ void UpdateModel(Model* model) {
 			boneWeights[currVert * 4] = 1.0f;
 			++currVert;
 		}
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	nativeModel->boneIndex = boneIDs;
 	nativeModel->weights = boneWeights;
@@ -1059,7 +1060,7 @@ void UpdateModel(Model* model) {
 		}
 		SetSubmeshTriangles(nativeModel, i, tris, currHeader->count);
 		free(tris);
-		currHeader = (VertexHeader*)((uint)(&(currHeader->vertices)) + (uint)(sizeof(Vertex) * (currHeader->count)));
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
 	}
 	UpdateMesh(nativeModel);
 	
@@ -1090,7 +1091,7 @@ void SetupMaterial(SDMaterial *mat, bool rigged) {
 	if (!rigged) {
 		glPopMatrix(1);
 	}
-	uint flags = POLY_ALPHA(mat->alpha) | POLY_ID(1);
+	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(1);
 	if (mat->backFaceCulling) {
 		#ifdef FLIP_X
 		flags |= POLY_CULL_FRONT;
@@ -1233,7 +1234,7 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 				glTexCoord2t16(currVert->u, currVert->v);
 				glVertex3v16(currVert->x, currVert->y, currVert->z);
 			}
-			currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 			//glEnd();
 		}
 	}
@@ -1252,7 +1253,7 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 				glCallList((u32*)dsnm->FIFOBatches[i]);
 			}
 			if (currVertexGroup != NULL) {
-				currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 			}
 		}
 	}
@@ -1316,7 +1317,7 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 				glVertex3v16(currVert->x, currVert->y, currVert->z);
 			}
 
-			currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+			currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 			//glEnd();
 		}
 	 }
@@ -1339,7 +1340,7 @@ void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
 			}
 			if (currVertexGroup != NULL) {
-				currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 			}
 		}
 		glPopMatrix(model->skeletonCount);
@@ -1441,8 +1442,8 @@ void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	flushRange += mulf32(width, mulf32(height, texMultiplier)) / 4096;
 
 	DC_FlushRange(newTex, flushRange);
-	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
-	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
+	newTex->palette = (unsigned short*)((uint32_t)newTex->palette + (uint32_t)newTex);
+	newTex->image = (char*)((uint32_t)newTex->image + (uint32_t)newTex);
 	if (upload) {
 		UploadTexture(newTex);
 	}
@@ -1664,8 +1665,8 @@ void UploadTexture(Texture* input) {
 
 void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	char* input = name;
-	newTex->palette = (unsigned short*)((uint)newTex->palette + (uint)newTex);
-	newTex->image = (char*)((uint)newTex->image + (uint)newTex);
+	newTex->palette = (unsigned short*)((uint32_t)newTex->palette + (uint32_t)newTex);
+	newTex->image = (char*)((uint32_t)newTex->image + (uint32_t)newTex);
 
 	// save the name
 	newTex->name = malloc(strlen(input) + 1);
@@ -2060,7 +2061,7 @@ void SetAmbientColor(int color) {
 
 void LoadAnimationFromRAM(Animation* anim) {
 	for (int i = 0; i < anim->keyframeSetCount; ++i) {
-		anim->sets[i] = (KeyframeSet*)((uint)anim->sets[i] + (uint)anim);
+		anim->sets[i] = (KeyframeSet*)((uint32_t)anim->sets[i] + (uint32_t)anim);
 	}
 #ifdef _NOTDS
 	for (int i = 0; i < anim->keyframeSetCount; ++i) {
@@ -2488,8 +2489,8 @@ void UploadSprite(Sprite* input, bool sub, bool BG) {
 }
 
 void LoadSpriteFromRAM(Sprite* sprite) {
-	sprite->image = (char*)((uint)sprite->image + (uint)sprite);
-	sprite->palette = (unsigned short*)((uint)sprite->palette + (uint)sprite);
+	sprite->image = (char*)((uint32_t)sprite->image + (uint32_t)sprite);
+	sprite->palette = (unsigned short*)((uint32_t)sprite->palette + (uint32_t)sprite);
 }
 
 Sprite* LoadSprite(char* input, bool sub, bool upload) {

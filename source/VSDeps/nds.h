@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <math.h>
 #include <stdio.h>
-#define uint unsigned int
 
 #define _NOTDS
 

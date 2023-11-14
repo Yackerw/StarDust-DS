@@ -2,6 +2,7 @@
 #include "sdcollision.h"
 #include <nds.h>
 #include "sdmath.h"
+#include <stdint.h>
 #define OCTREE_MAX_DEPTH 10
 #define OCTREE_MAX_TRIS 40
 // note: barely noticeable slowdown from this, and fixes a bug with large polygons
@@ -229,7 +230,7 @@ MeshCollider *LoadCollisionMesh(char *input) {
 	MeshCollider *mesh = malloc(fileSize);
 	fread(mesh, fileSize, 1, f);
 	fclose(f);
-	mesh->triangles = (CollisionTriangle*)((uint)mesh + (uint)mesh->triangles);
+	mesh->triangles = (CollisionTriangle*)((uint32_t)mesh + (uint32_t)mesh->triangles);
 	return mesh;
 }
 
@@ -377,7 +378,7 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 				triCount += (currVertexGroup->count / 4) * 2;
 			}
 		}
-		currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+		currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 	}
 	retValue->triangles = (CollisionTriangle*)malloc(sizeof(CollisionTriangle)*triCount);
 	retValue->triCount = triCount;
@@ -560,7 +561,7 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 				currTri += 1;
 			}
 		}
-		currVertexGroup = (VertexHeader*)((uint)(&(currVertexGroup->vertices)) + (uint)(sizeof(Vertex) * (currVertexGroup->count)));
+		currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 	}
 #ifdef _NOTDS
 	for (int i = 0; i < retValue->triCount; ++i) {

@@ -3,28 +3,29 @@
 #include <nds.h>
 #include "sdmath.h"
 #include <stdio.h>
+#include <stdint.h>
 
 typedef struct {
-	uint RIFF;
-	uint fileSize;
-	uint WAVE;
-	uint fmt;
-	uint formatDataLength;
+	uint32_t RIFF;
+	uint32_t fileSize;
+	uint32_t WAVE;
+	uint32_t fmt;
+	uint32_t formatDataLength;
 	u16 format;
 	u16 channelCount;
-	uint sampleRate;
-	uint bytesPerSec;
+	uint32_t sampleRate;
+	uint32_t bytesPerSec;
 	u16 bytesInSamplesTimesChannels;
 	u16 bitsPerSample;
-	uint DATA;
-	uint dataSize;
+	uint32_t DATA;
+	uint32_t dataSize;
 } WavHeader;
 
 typedef struct {
 	bool stereo;
-	uint sampleRate;
+	uint32_t sampleRate;
 	int bytesPerSample;
-	uint dataSize;
+	uint32_t dataSize;
 	bool streamed;
 	int fOffset;
 	union {
