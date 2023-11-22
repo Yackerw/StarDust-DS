@@ -26,6 +26,7 @@ class vertex:
         self.u = 0.0
         self.v = 0.0
         self.rig = 0
+        self.rigReassigned = False
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y and self.z == other.z and self.nx == other.nx and self.ny == other.ny and self.nz == other.nz and self.u == other.u and self.v == other.v and self.rig == other.rig
 class submesh:
@@ -562,8 +563,9 @@ def reorder_bones(optObj, blendObj, skeleton, scale, avgx, avgy, avgz):
         # re-order the rigs to match what we've generated
         for submesh in optObj.subMeshes:
             for vert in submesh.verts:
-                if blendObj.vertex_groups[vert.rig].name == bone.blenderBone.name:
+                if blendObj.vertex_groups[vert.rig].name == bone.blenderBone.name and vert.rigReassigned == False:
                     vert.rig = i2
+                    vert.rigReassigned = True
         
         i2 += 1
     return optSkeleton

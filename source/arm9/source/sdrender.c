@@ -1881,7 +1881,7 @@ void RenderModelRigged(Model* model, m4x4* matrix, SDMaterial* mats, Animator* a
 			}
 			modelDrawCalls[modelDrawCallCount].animator = animator;
 			modelDrawCalls[modelDrawCallCount].materialId = i;
-			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(Material));
+			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(SDMaterial));
 			modelDrawCalls[modelDrawCallCount].matrix = *matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
 			Vec3 zero = { 0, 0, 0 };
