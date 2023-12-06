@@ -45,6 +45,8 @@ Tools:
 
 -Custom image converter supporting various texture, sprite, and background formats
 
+Please view the page for tools on the wiki before using! https://github.com/Yackerw/StarDust-DS/wiki/Tools
+
 Documentation:
 
 Available here: https://github.com/Yackerw/StarDust-DS/wiki
