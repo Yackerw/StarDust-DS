@@ -2667,7 +2667,7 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	else {
 		int affineId = 0;
 		if (sprite->scaled && spriteMatrixId < 32) {
-			oamAffineTransformation(&oamSub, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
+			oamAffineTransformation(&oamMain, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
 			affineId = spriteMatrixId;
 			++spriteMatrixId;
 		}
