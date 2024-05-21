@@ -20,7 +20,7 @@ struct CollisionBlock {
 	Vec3 boundsMin;
 	Vec3 boundsMax;
 	union {
-		unsigned int *triangleList;
+		unsigned short *triangleList;
 		CollisionBlock *blocks;
 	};
 };
@@ -57,7 +57,7 @@ bool SphereOnSphere(CollisionSphere *sphere1, CollisionSphere *sphere2, f32 *pen
 
 MeshCollider *MeshColliderFromMesh(Model *input);
 
-unsigned int* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris);
+unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris);
 
 void DestroyCollisionMesh(MeshCollider* meshCollider);
 

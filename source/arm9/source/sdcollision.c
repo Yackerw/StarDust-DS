@@ -6,7 +6,8 @@
 #define OCTREE_MAX_DEPTH 10
 #define OCTREE_MAX_TRIS 40
 // note: barely noticeable slowdown from this, and fixes a bug with large polygons
-#define FLOATBARY
+//#define FLOATBARY
+#define BARY64
 
 float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 	return x1 * x2 + y1 * y2 + z1 * z2;
@@ -14,14 +15,15 @@ float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 
 #ifndef _NOTDS
 long long dot64(Vec3* left, Vec3* right) {
-	long long work = ((long long)left->x * (long long)right->x) >> 12;
-	long long work2 = ((long long)left->y * (long long)right->y) >> 12;
-	long long work3 = ((long long)left->z * (long long)right->z) >> 12;
+	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
+	long long work = ((long long)left->x * (long long)right->x);
+	long long work2 = ((long long)left->y * (long long)right->y);
+	long long work3 = ((long long)left->z * (long long)right->z);
 	return work + work2 + work3;
 }
 
 long long mulf64(long long left, long long right) {
-	return (left * right) >> 12;
+	return (left * right) >> 24;
 }
 
 long long divf64(long long left, long long right) {
@@ -29,12 +31,30 @@ long long divf64(long long left, long long right) {
 
 	while (REG_DIVCNT & DIV_BUSY);
 
+	// really hope this still works
 	REG_DIV_NUMER = left << 12;
 	REG_DIV_DENOM = right;
 
 	while (REG_DIVCNT & DIV_BUSY);
 
 	return (REG_DIV_RESULT);
+}
+#elif defined(BARY64_DEBUG)
+// debug functions
+long long dot64(Vec3* left, Vec3* right) {
+	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
+	long long work = ((long long)(left->x * 4096.0f) * (long long)(right->x * 4096.0f));
+	long long work2 = ((long long)(left->y * 4096.0f) * (long long)(right->y * 4096.0f));
+	long long work3 = ((long long)(left->z * 4096.0f) * (long long)(right->z * 4096.0f));
+	return work + work2 + work3;
+}
+
+long long mulf64(long long left, long long right) {
+	return (left * right) >> 24;
+}
+
+long long divf64(long long left, long long right) {
+	return (left << 12) / right;
 }
 #endif
 
@@ -43,6 +63,7 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3Subtraction(&tri->verts[1], &tri->verts[0], &v0);
 	Vec3Subtraction(&tri->verts[2], &tri->verts[0], &v1);
 	Vec3Subtraction(point, &tri->verts[0], &v2);
+	// FLOATBARY is...probably a big bottleneck. maybe.
 	#ifdef FLOATBARY
 	float v0x = f32tofloat(v0.x);
 	float v0y = f32tofloat(v0.y);
@@ -75,6 +96,18 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 retValue;
 	retValue.x = divf64(mulf64(d11, d20) - mulf64(d01, d21), denom);
 	retValue.y = divf64(mulf64(d00, d21) - mulf64(d01, d20), denom);
+	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
+	return retValue;
+#elif defined (BARY64_DEBUG)
+	long long d00 = dot64(&v0, &v0);
+	long long d01 = dot64(&v0, &v1);
+	long long d11 = dot64(&v1, &v1);
+	long long d20 = dot64(&v2, &v0);
+	long long d21 = dot64(&v2, &v1);
+	long long denom = mulf64(d00, d11) - mulf64(d01, d01);
+	Vec3 retValue;
+	retValue.x = divf64(mulf64(d11, d20) - mulf64(d01, d21), denom) / 4096.0f;
+	retValue.y = divf64(mulf64(d00, d21) - mulf64(d01, d20), denom) / 4096.0f;;
 	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
 	return retValue;
 #else
@@ -132,12 +165,14 @@ bool SphereOnLine(CollisionSphere *sphere, Vec3 *p1, Vec3 *p2, Vec3 *closestPoin
 	// okay, get magnitude between the points. if
 	// the distance between the two points of the line and the closest point is equal to the distance between
 	// the two points of the line, then it's on the line and we return true
-	f32 magLine = Magnitude(&working3);
+	f32 magLine = SqrMagnitude(&working3);
 	Vec3Subtraction(p1, closestPoint, &working);
 	f32 magPoint1 = Magnitude(&working);
 	Vec3Subtraction(p2, closestPoint, &working);
 	f32 magPoint2 = Magnitude(&working);
 	magPoint1 += magPoint2;
+	// this saves us 1 (one) sqrt call for magLine. worth, I think.
+	magPoint1 = mulf32(magPoint1, magPoint1);
 	// add a little leniency for, uh...lack of precision
 	if (magPoint1 <= magLine + Fixed32ToNative(32) && magPoint1 >= magLine - Fixed32ToNative(32)) {
 		return true;
@@ -591,7 +626,7 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 	return retValue;
 }
 
-void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, CollisionBlock* block, unsigned int** retValue, int* maxSize, int* currSize) {
+void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, CollisionBlock* block, unsigned short** retValue, int* maxSize, int* currSize) {
 	if (block->subdivided) {
 		for (int i = 0; i < 8; ++i) {
 			if (AABBCheck(min, max, &block->blocks[i].boundsMin, &block->blocks[i].boundsMax)) {
@@ -626,8 +661,8 @@ void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, C
 	}
 }
 
-unsigned int* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris) {
-	unsigned int* retValue = (unsigned int*)malloc(sizeof(unsigned int) * 512);
+unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris) {
+	unsigned short* retValue = (unsigned int*)malloc(sizeof(unsigned short) * 512);
 	int maxSize = 512;
 	int currSize = 0;
 	for (int i = 0; i < 8; ++i) {

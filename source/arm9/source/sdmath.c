@@ -300,11 +300,11 @@ void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
 	QuatNormalizeFast(out);
 }
 
-f32 DotProduct(Vec3 *left, Vec3 *right) {
+extern inline f32 DotProduct(Vec3 *left, Vec3 *right) {
 	return mulf32(left->x, right->x) + mulf32(left->y, right->y) + mulf32(left->z, right->z);
 }
 
-void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out) {
+extern inline void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = mulf32(left->y, right->z) - mulf32(left->z, right->y);
 	out->y = -(mulf32(left->x, right->z) - mulf32(left->z, right->x));
 	out->z = mulf32(left->x, right->y) - mulf32(left->y, right->x);
@@ -382,46 +382,46 @@ void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
 	QuatNormalize(out);
 }
 
-f32 Magnitude(Vec3 *vec) {
+extern inline f32 Magnitude(Vec3 *vec) {
 	return sqrtf32(mulf32(vec->x, vec->x) + mulf32(vec->y, vec->y) + mulf32(vec->z, vec->z));
 }
 
-f32 SqrMagnitude(Vec3 *vec) {
+extern inline f32 SqrMagnitude(Vec3 *vec) {
 	return mulf32(vec->x, vec->x) + mulf32(vec->y, vec->y) + mulf32(vec->z, vec->z);
 }
 
-void Normalize(Vec3 *vec, Vec3 *out) {
+extern inline void Normalize(Vec3 *vec, Vec3 *out) {
 	f32 magnitude = Magnitude(vec);
 	out->x = divf32(vec->x, magnitude);
 	out->y = divf32(vec->y, magnitude);
 	out->z = divf32(vec->z, magnitude);
 }
 
-void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out) {
+extern inline void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = left->x + right->x;
 	out->y = left->y + right->y;
 	out->z = left->z + right->z;
 }
 
-void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out) {
+extern inline void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = left->x - right->x;
 	out->y = left->y - right->y;
 	out->z = left->z - right->z;
 }
 
-void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out) {
+extern inline void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = mulf32(left->x, right->x);
 	out->y = mulf32(left->y, right->y);
 	out->z = mulf32(left->z, right->z);
 }
 
-void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out) {
+extern inline void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = divf32(left->x, right->x);
 	out->y = divf32(left->y, right->y);
 	out->z = divf32(left->z, right->z);
 }
 
-f32 Lerp(f32 left, f32 right, f32 t) {
+extern inline f32 Lerp(f32 left, f32 right, f32 t) {
 	return left + mulf32(t, right - left);
 }
 
@@ -460,7 +460,7 @@ void Reflect(Vec3 *a, Vec3 *b, Vec3 *out) {
 	out->z = a->z - tmp.z;
 }
 
-f32 Clamp(f32 value, f32 min, f32 max) {
+extern inline f32 Clamp(f32 value, f32 min, f32 max) {
 	if (value > max) {
 		value = max;
 	}
@@ -470,7 +470,7 @@ f32 Clamp(f32 value, f32 min, f32 max) {
 	return value;
 }
 
-int iClamp(int value, int min, int max) {
+extern inline int iClamp(int value, int min, int max) {
 	if (value > max) {
 		value = max;
 	}
@@ -480,21 +480,21 @@ int iClamp(int value, int min, int max) {
 	return value;
 }
 
-f32 Max(f32 value, f32 max) {
+extern inline f32 Max(f32 value, f32 max) {
 	if (max > value) {
 		return max;
 	}
 	return value;
 }
 
-f32 Min(f32 value, f32 min) {
+extern inline f32 Min(f32 value, f32 min) {
 	if (min < value) {
 		return min;
 	}
 	return value;
 }
 
-f32 DeltaAngle(f32 dir1, f32 dir2)
+extern inline f32 DeltaAngle(f32 dir1, f32 dir2)
 {
 	f32 a = dir2 - dir1;
 
@@ -597,7 +597,7 @@ void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret) {
 	FrustumToMatrix(xmin, xmax, ymin, ymax, near, far, ret);
 }
 
-f32 f32Mod(f32 left, f32 right) {
+extern inline f32 f32Mod(f32 left, f32 right) {
 #ifndef _NOTDS
 	return left % right;
 #else
@@ -605,13 +605,13 @@ f32 f32Mod(f32 left, f32 right) {
 #endif
 }
 
-void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
+extern inline void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
 	ret->x = mulf32(left->m[0], right->x) + mulf32(left->m[1], right->y) + mulf32(left->m[2], right->z) + left->m[3];
 	ret->y = mulf32(left->m[4], right->x) + mulf32(left->m[5], right->y) + mulf32(left->m[6], right->z) + left->m[7];
 	ret->z = mulf32(left->m[8], right->x) + mulf32(left->m[9], right->y) + mulf32(left->m[10], right->z) + left->m[11];
 }
 
-f32 f32abs(f32 input) {
+extern inline f32 f32abs(f32 input) {
 #ifndef _NOTDS
 	return abs(input);
 #else

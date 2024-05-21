@@ -101,9 +101,9 @@ void QuatNormalize(Quaternion *input);
 
 void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t);
 
-f32 DotProduct(Vec3 *left, Vec3 *right);
+inline f32 DotProduct(Vec3 *left, Vec3 *right);
 
-void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out);
+inline void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out);
 
 void QuatTimesVec3(Quaternion *quat, Vec3 *vec, Vec3 *out);
 
@@ -113,35 +113,35 @@ void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out);
 
 void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out);
 
-f32 Magnitude(Vec3 *vec);
+inline f32 Magnitude(Vec3 *vec);
 
-f32 SqrMagnitude(Vec3 *vec);
+inline f32 SqrMagnitude(Vec3 *vec);
 
-void Normalize(Vec3 *vec, Vec3 *out);
+inline void Normalize(Vec3 *vec, Vec3 *out);
 
-void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out);
+inline void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out);
 
-void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out);
+inline void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out);
 
-void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out);
+inline void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out);
 
-void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out);
+inline void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out);
 
-f32 Lerp(f32 left, f32 right, f32 t);
+inline f32 Lerp(f32 left, f32 right, f32 t);
 
 f32 Atan2(f32 y, f32 x);
 
 void Reflect(Vec3 *a, Vec3 *b, Vec3 *out);
 
-f32 Clamp(f32 value, f32 min, f32 max);
+inline f32 Clamp(f32 value, f32 min, f32 max);
 
-int iClamp(int value, int min, int max);
+inline int iClamp(int value, int min, int max);
 
-f32 Max(f32 value, f32 max);
+inline f32 Max(f32 value, f32 max);
 
-f32 Min(f32 value, f32 min);
+inline f32 Min(f32 value, f32 min);
 
-f32 DeltaAngle(f32 dir1, f32 dir2);
+inline f32 DeltaAngle(f32 dir1, f32 dir2);
 
 f32 Pow(f32 value, f32 toPow);
 
@@ -151,11 +151,11 @@ void NormalFromVertsFloat(Vec3* vert1, Vec3* vert2, Vec3* vert3, Vec3* out);
 
 void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret);
 
-f32 f32Mod(f32 left, f32 right);
+inline f32 f32Mod(f32 left, f32 right);
 
-void MatrixTimesVec3(m4x4* left, Vec3* right, Vec3* ret);
+inline void MatrixTimesVec3(m4x4* left, Vec3* right, Vec3* ret);
 
-f32 f32abs(f32 input);
+inline f32 f32abs(f32 input);
 
 void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut);
 

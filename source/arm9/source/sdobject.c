@@ -208,7 +208,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 			max.x = newSphere.position->x + newSphere.radius;
 			max.y = newSphere.position->y + newSphere.radius;
 			max.z = newSphere.position->z + newSphere.radius;
-			unsigned int* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
+			unsigned short* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
 			// now check them once more for whether they're on the plane
 			for (int i = 0; i < totalTris; ++i) {
 				bool onPlane;
@@ -301,6 +301,18 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	Vec3 rotatedPosition;
 	Vec3 tmpPos;
 	Quaternion inverseObjectRotation;
+	// radius...
+	f32 newRadius = divf32(sphere->radius, meshObject->scale.x);
+	// the quaternion operations here are actually rather expensive, so let's early out extra early. just be crazy lenient.
+	// potential solution: bounding sphere instead of bounding box?
+	f32 AABBBounds = Max(meshObject->meshCol->AABBBounds.x, Max(meshObject->meshCol->AABBBounds.y, meshObject->meshCol->AABBBounds.z));
+	f32 AABBScaling = Max(meshObject->scale.x, Max(meshObject->scale.y, meshObject->scale.z));
+	AABBBounds = mulf32(mulf32(AABBBounds, AABBScaling), 6144) + newRadius;
+	if (f32abs(sphere->position->x - (meshObject->meshCol->AABBPosition.x + meshObject->position.x)) > AABBBounds ||
+		f32abs(sphere->position->y - (meshObject->meshCol->AABBPosition.y + meshObject->position.y)) > AABBBounds ||
+		f32abs(sphere->position->z - (meshObject->meshCol->AABBPosition.z + meshObject->position.z)) > AABBBounds) {
+		return;
+	}
 	QuaternionInverse(&meshObject->rotation, &inverseObjectRotation);
 	tmpPos.x = sphere->position->x - meshObject->position.x;
 	tmpPos.y = sphere->position->y - meshObject->position.y;
@@ -311,8 +323,6 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	rotatedPosition.x = divf32(rotatedPosition.x, meshObject->scale.x);
 	rotatedPosition.y = divf32(rotatedPosition.y, meshObject->scale.y);
 	rotatedPosition.z = divf32(rotatedPosition.z, meshObject->scale.z);
-	// radius...
-	f32 newRadius = divf32(sphere->radius, meshObject->scale.x);
 	// are we INSIDE the AABB?
 	if (f32abs(rotatedPosition.x - meshObject->meshCol->AABBPosition.x) > meshObject->meshCol->AABBBounds.x + newRadius ||
 	f32abs(rotatedPosition.y - meshObject->meshCol->AABBPosition.y) > meshObject->meshCol->AABBBounds.y + newRadius ||
@@ -331,7 +341,7 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	max.x = newSphere.position->x + newSphere.radius;
 	max.y = newSphere.position->y + newSphere.radius;
 	max.z = newSphere.position->z + newSphere.radius;
-	unsigned int* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
+	unsigned short* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
 	f32 penetration;
 	Vec3 normal;
 	CollisionHit hitInfo;
@@ -346,24 +356,24 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 			hitInfo.hitTri = trisToCollideWith[i];
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
 				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
-			trisToCollideWith[i] = -1;
+			trisToCollideWith[i] = 0xFFFF;
 		}
 		if (!onPlane) {
-			trisToCollideWith[i] = -1;
+			trisToCollideWith[i] = 0xFFFF;
 		}
 	}
 	// lines...
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != -1 && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
 			hitInfo.hitTri = trisToCollideWith[i];
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
 				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
-			trisToCollideWith[i] = -1;
+			trisToCollideWith[i] = 0xFFFF;
 		}
 	}
 	// verts
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != -1 && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
 			hitInfo.hitTri = trisToCollideWith[i];
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
 				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);

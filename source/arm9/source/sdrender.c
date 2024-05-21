@@ -1074,86 +1074,75 @@ void UpdateModel(Model* model) {
 }
 
 #ifndef _NOTDS
-void SetupMaterial(SDMaterial *mat, bool rigged) {
-	// reset matrix because for SOME REASON the light is rotated by that when set up
-	glMatrixMode(GL_MODELVIEW);
-	if (rigged) {
-		glLoadIdentity();
-	}
-	else {
-		glPushMatrix();
-		glLoadIdentity();
-	}
-	// set our color to the light color, because DS handles color very weirdly
-	glLight(0, RGB15(mat->color.x,
-	mat->color.y,
-	mat->color.z), lightNormal.x, lightNormal.y, lightNormal.z);
-	if (!rigged) {
-		glPopMatrix(1);
-	}
+void SetupMaterial(SDMaterial* mat, bool rigged) {
 	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(1);
 	if (mat->backFaceCulling) {
-		#ifdef FLIP_X
+#ifdef FLIP_X
 		flags |= POLY_CULL_FRONT;
-		#else
+#else
 		flags |= POLY_CULL_BACK;
-		#endif
-	} else {
+#endif
+	}
+	else {
 		flags |= POLY_CULL_NONE;
 	}
 	if (mat->lit) {
-		flags |= POLY_FORMAT_LIGHT0;
-	} else {
-		flags |= POLY_FORMAT_LIGHT0;
+		// reset matrix because for SOME REASON the light is rotated by that when set up
+		glMatrixMode(GL_MODELVIEW);
+		if (rigged) {
+			glLoadIdentity();
+		}
+		else {
+			glPushMatrix();
+			glLoadIdentity();
+		}
+		// set our color to the light color, because DS handles color very weirdly
 		glLight(0, RGB15(mat->color.x,
-		mat->color.y,
-		mat->color.z), 0, 0, 0);
+			mat->color.y,
+			mat->color.z), lightNormal.x, lightNormal.y, lightNormal.z);
+		if (!rigged) {
+			glPopMatrix(1);
+		}
+		flags |= POLY_FORMAT_LIGHT0;
+		glMaterialf(GL_EMISSION, RGB15(mat->emission.x, mat->emission.y, mat->emission.z));
+	}
+	else {
+		glMaterialf(GL_EMISSION, RGB15(mat->color.x, mat->color.y, mat->color.z));
 	}
 	glMaterialf(GL_SPECULAR, RGB15(((lightColor & 0x1F) * mat->specular) >> 8, (((lightColor >> 5) & 0x1F) * mat->specular) >> 8, (((lightColor >> 10) & 0x1F) * mat->specular) >> 8));
-	glMaterialf(GL_EMISSION, RGB15(mat->emission.x, mat->emission.y, mat->emission.z));
 	glPolyFmt(flags);
-	Texture *currTex = mat->texture;
+	Texture* currTex = mat->texture;
 	glBindTexture(0, currTex->textureId);
 	glAssignColorTable(0, currTex->paletteId);
 }
 
-void NormalizeMatrix(m4x4 *input, m4x4 *output) {
+void GetMatrixLengths(m4x4* input, Vec3* output) {
 	f32 matLength;
-	matLength = mulf32(input->m[0], input->m[0]);
-	matLength += mulf32(input->m[4], input->m[4]);
-	matLength += mulf32(input->m[8], input->m[8]);
+	long long tmpMat = (long long)input->m[0] * (long long)input->m[0];
+	tmpMat += (long long)input->m[4] * (long long)input->m[4];
+	tmpMat += (long long)input->m[8] * (long long)input->m[8];
+	matLength = tmpMat >> 12;
 	matLength = sqrtf32(matLength);
-	output->m[0] = divf32(input->m[0], matLength);
-	output->m[4] = divf32(input->m[4], matLength);
-	output->m[8] = divf32(input->m[8], matLength);
+	output->x = divf32(4096, matLength);
 
-	matLength = mulf32(input->m[1], input->m[1]);
-	matLength += mulf32(input->m[5], input->m[5]);
-	matLength += mulf32(input->m[9], input->m[9]);
+	tmpMat = (long long)input->m[1] * (long long)input->m[1];
+	tmpMat += (long long)input->m[5] * (long long)input->m[5];
+	tmpMat += (long long)input->m[9] * (long long)input->m[9];
+	matLength = tmpMat >> 12;
 	matLength = sqrtf32(matLength);
-	output->m[1] = divf32(input->m[1], matLength);
-	output->m[5] = divf32(input->m[5], matLength);
-	output->m[9] = divf32(input->m[9], matLength);
+	output->y = divf32(4096, matLength);
 
-	matLength = mulf32(input->m[2], input->m[2]);
-	matLength += mulf32(input->m[6], input->m[6]);
-	matLength += mulf32(input->m[10], input->m[10]);
+	tmpMat = (long long)input->m[2] * (long long)input->m[2];
+	tmpMat += (long long)input->m[6] * (long long)input->m[6];
+	tmpMat += (long long)input->m[10] * (long long)input->m[10];
+	matLength = tmpMat >> 12;
 	matLength = sqrtf32(matLength);
-	output->m[2] = divf32(input->m[2], matLength);
-	output->m[6] = divf32(input->m[6], matLength);
-	output->m[10] = divf32(input->m[10], matLength);
+	output->z = divf32(4096, matLength);
 }
 
 void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *animator) {
-	m4x4 tmpMatrix;
-	tmpMatrix.m[12] = 0;
-	tmpMatrix.m[13] = 0;
-	tmpMatrix.m[14] = 0;
-	tmpMatrix.m[3] = 0;
-	tmpMatrix.m[7] = 0;
-	tmpMatrix.m[11] = 0;
-	tmpMatrix.m[15] = 0;
-	NormalizeMatrix(matrix, &tmpMatrix);
+	Vec3 matrixSize;
+	GetMatrixLengths(matrix, &matrixSize);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
 	VertexHeader *currVertexGroup = model->vertexGroups;
@@ -1163,7 +1152,17 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 	// cache up to 30 bones
 	for (int i = 0; i < 31 && i < model->skeletonCount; ++i) {
 		glMatrixMode(GL_MODELVIEW);
-		glLoadMatrix4x4(&tmpMatrix);
+		glLoadMatrix4x4(matrix);
+		// anger
+		MATRIX_MULT3x3 = matrixSize.x;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = matrixSize.y;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = 0;
+		MATRIX_MULT3x3 = matrixSize.z;
 		glMatrixMode(GL_POSITION);
 		glLoadMatrix4x4(matrix);
 		glMatrixMode(GL_MODELVIEW);
@@ -1267,19 +1266,22 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 
 void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
 	// have to work around the DS' jank by omitting scale from the MODELVIEW matrix for normals, but not the POSITION matrix
-	m4x4 tmpMatrix;
-	tmpMatrix.m[12] = 0;
-	tmpMatrix.m[13] = 0;
-	tmpMatrix.m[14] = 0;
-	tmpMatrix.m[3] = 0;
-	tmpMatrix.m[7] = 0;
-	tmpMatrix.m[11] = 0;
-	tmpMatrix.m[15] = 4096;
-	NormalizeMatrix(matrix, &tmpMatrix);
+	Vec3 matrixSize;
+	GetMatrixLengths(matrix, &matrixSize);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
 	//glPushMatrix();
-	glLoadMatrix4x4(&tmpMatrix);
+	glLoadMatrix4x4(matrix);
+	// anger
+	MATRIX_MULT3x3 = matrixSize.x;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = matrixSize.y;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = 0;
+	MATRIX_MULT3x3 = matrixSize.z;
 	glMatrixMode(GL_POSITION);
 	glLoadMatrix4x4(matrix);
 	VertexHeader *currVertexGroup = model->vertexGroups;
@@ -1785,6 +1787,12 @@ void RenderModel(Model* model, m4x4* matrix, SDMaterial* mats) {
 			diffColor->w = (*(int*)&mats[i].alpha) / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
 			renderMat.backFaceCulling = mats[i].backFaceCulling;
+			int* unlit = malloc(sizeof(int));
+			unlit[0] = 0;
+			if (!mats[i].lit) {
+				unlit[0] = 1;
+			}
+			SetMaterialUniform(&renderMat, "unlit", unlit);
 			// render the submesh now
 			RenderSubMesh(model->NativeModel, &renderMat, ((Mesh*)model->NativeModel)->subMeshes[i], &renderMat.mainShader);
 		}
@@ -1881,7 +1889,7 @@ void RenderModelRigged(Model* model, m4x4* matrix, SDMaterial* mats, Animator* a
 			}
 			modelDrawCalls[modelDrawCallCount].animator = animator;
 			modelDrawCalls[modelDrawCallCount].materialId = i;
-			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(SDMaterial));
+			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(Material));
 			modelDrawCalls[modelDrawCallCount].matrix = *matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
 			Vec3 zero = { 0, 0, 0 };
@@ -2667,7 +2675,7 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	else {
 		int affineId = 0;
 		if (sprite->scaled && spriteMatrixId < 32) {
-			oamAffineTransformation(&oamMain, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
+			oamAffineTransformation(&oamSub, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
 			affineId = spriteMatrixId;
 			++spriteMatrixId;
 		}
