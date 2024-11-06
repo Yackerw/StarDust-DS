@@ -569,7 +569,7 @@ int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision
 	destroyFuncs[currFunc] = destroy;
 	networkCreateFuncs[currFunc] = networkCreateSend;
 	networkCreateReceiveFuncs[currFunc] = networkCreateReceive;
-	networkPacketReceiveFuncs[currFunc] = networkPacketReceive;
+	networkPacketReceiveFuncs[currFunc] = (void (*)(Object *, void *, int,  int,  int))networkPacketReceive;
 	networkedObjectTypes[currFunc] = networked;
 
 	int retValue = currFunc;
@@ -769,7 +769,7 @@ void StopSyncingObject(Object* obj) {
 	}
 	// sync that we should stop syncing this
 	if (defaultNetInstance->host) {
-		PacketSendAll(&obj->netId, 4, objStopSyncId, true, defaultNetInstance);
+		PacketSendAll((char*)&obj->netId, 4, objStopSyncId, true, defaultNetInstance);
 	}
 	FreeObjectPtr(&networkedObjects[obj->netId]);
 	obj->netId = -1;

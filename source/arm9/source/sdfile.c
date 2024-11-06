@@ -35,7 +35,7 @@ void fread_MusicYielding(void* buffer, int size, int count, FILE* f) {
 	size *= count;
 	while (size > 0x10000) {
 		fread(buffer, size, 1, f);
-		buffer = (uint32_t)buffer + 0x10000;
+		buffer = (void*)((uint32_t)buffer + 0x10000);
 		size -= 0x10000;
 		UpdateMusicBuffer();
 	}

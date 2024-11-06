@@ -26,7 +26,7 @@ GRAPHICS :=
 #---------------------------------------------------------------------------------
 ARCH := -marm -mthumb-interwork -march=armv5te -mtune=arm946e-s
 
-CFLAGS   := -g -Wall -Ofast\
+CFLAGS   := -g -Wall -Ofast -std=gnu99\
 			-fomit-frame-pointer\
 			-ffast-math\
 			-msoft-float\

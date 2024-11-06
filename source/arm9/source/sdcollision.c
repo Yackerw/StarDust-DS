@@ -345,7 +345,7 @@ void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currD
 	currBlock->subdivided = false;
 	currBlock->triCount = 0;
 	int maxTris = OCTREE_MAX_TRIS;
-	currBlock->triangleList = (unsigned int*)malloc(sizeof(unsigned int) * maxTris);
+	currBlock->triangleList = (unsigned short*)malloc(sizeof(unsigned short) * maxTris);
 	// iterate over all the collision triangles in the mesh and see if they fall within the block
 	for (int i = 0; i < currMesh->triCount; ++i) {
 #ifdef _NOTDS
@@ -365,7 +365,7 @@ void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currD
 			}
 			else if (currBlock->triCount >= maxTris) {
 				maxTris += OCTREE_MAX_TRIS;
-				currBlock->triangleList = (unsigned int*)realloc(currBlock->triangleList, sizeof(unsigned int) * maxTris);
+				currBlock->triangleList = (unsigned short*)realloc(currBlock->triangleList, sizeof(unsigned short) * maxTris);
 			}
 		}
 	}
@@ -662,7 +662,7 @@ void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, C
 }
 
 unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris) {
-	unsigned short* retValue = (unsigned int*)malloc(sizeof(unsigned short) * 512);
+	unsigned short* retValue = (unsigned short*)malloc(sizeof(unsigned short) * 512);
 	int maxSize = 512;
 	int currSize = 0;
 	for (int i = 0; i < 8; ++i) {

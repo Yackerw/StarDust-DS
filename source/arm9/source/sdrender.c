@@ -512,7 +512,7 @@ Model* FreeModelKeepCache(Model* model) {
 		currHeader->material = modelHeader->material;
 		currHeader->bitFlags = modelHeader->bitFlags;
 		currHeader->count = 0;
-		currHeader = &currHeader->vertices;
+		currHeader = (VertexHeader*)&currHeader->vertices;
 		modelHeader = (VertexHeader*)((uint32_t)(&(modelHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (modelHeader->count)));
 	}
 	retValue->version = 0x80000000 | model->version;
@@ -2441,7 +2441,7 @@ void InitializeSubBG() {
 
 void UploadSprite(Sprite* input, bool sub, bool BG) {
 #ifndef _NOTDS
-	input->gfx = oamAllocateGfx(sub ? &oamSub : &oamMain, input->resolution, input->format);
+	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->resolution, input->format);
 	float multiplier = input->format == 0 ? 0.5f : input->format == 1 ? 1.0f : 2.0f;
 	dmaCopy(input->image, input->gfx, multiplier * (input->width * input->height));
 	input->paletteOffset = 15;

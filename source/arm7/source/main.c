@@ -91,7 +91,7 @@ void powerButtonCB() {
 }
 
 void PlaySound(SoundData* sd) {
-	AudioRegister* audioRegisters = 0x04000400;
+	AudioRegister* audioRegisters = (AudioRegister*)0x04000400;
 	int currRegister = 0;
 	// get free audio register
 	for (int i = 0; i < 16; ++i) {
@@ -114,7 +114,7 @@ void PlaySound(SoundData* sd) {
 	}
 
 	// register was found, employ data
-	audioRegisters[currRegister].SOUNDSAD = sd->sound->samples;
+	audioRegisters[currRegister].SOUNDSAD = (unsigned int)sd->sound->samples;
 	// mark bit to start playing
 	unsigned int workValue = 0x80000000;
 
@@ -154,14 +154,14 @@ void PlaySound(SoundData* sd) {
 }
 
 void StopSound(int id) {
-	AudioRegister* audioRegisters = 0x04000400;
+	AudioRegister* audioRegisters = (AudioRegister*)0x04000400;
 	audioRegisters[id].SOUNDCNT = 0;
 	// acknowledge that it's been done
 	fifoSendValue32(FIFO_USER_01, 0);
 }
 
 void SetSoundPan(FIFOAudioParameter* data) {
-	AudioRegister* audioRegisters = 0x04000400;
+	AudioRegister* audioRegisters = (AudioRegister*)0x04000400;
 	audioRegisters[data->id].SOUNDCNT &= !((0x7F) << 16);
 	audioRegisters[data->id].SOUNDCNT |= mulf32(data->value, 127) << 16;
 	// acknowledge that it's been done
@@ -169,7 +169,7 @@ void SetSoundPan(FIFOAudioParameter* data) {
 }
 
 void SetSoundVolume(FIFOAudioParameter* data) {
-	AudioRegister* audioRegisters = 0x04000400;
+	AudioRegister* audioRegisters = (AudioRegister*)0x04000400;
 	audioRegisters[data->id].SOUNDCNT &= !0x7F;
 	audioRegisters[data->id].SOUNDCNT |= mulf32(data->value, 127);
 	// acknowledge that it's been done

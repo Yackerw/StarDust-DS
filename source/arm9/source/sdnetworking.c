@@ -579,7 +579,7 @@ NetworkInstance* CreateNetworkingInstance(int maxClients, int maxPackets) {
 	NetworkInstance* retValue = (NetworkInstance*)calloc(sizeof(NetworkInstance), 1);
 	retValue->clientIDs = (int*)malloc(sizeof(int) * maxClients);
 	retValue->clientsUsed = (bool*)calloc(sizeof(bool) * maxClients, 1);
-	retValue->gameLayerPacketProcessing = (void(**))malloc(sizeof(void(*)));
+	retValue->gameLayerPacketProcessing = (void(**)(unsigned char*, int, int, NetworkInstance*))malloc(sizeof(void(*)));
 	retValue->importantStackPosition = (int*)calloc(sizeof(int) * maxClients, 1);
 	retValue->importantStack = (unsigned char***)malloc(sizeof(unsigned char**) * maxClients);
 	retValue->importantStackSizes = (int**)malloc(sizeof(int*) * maxClients);
