@@ -537,12 +537,14 @@ void ProcessObjects() {
 				} else {
 					UpdateAnimator(currObject->animator, currObject->mesh);
 				}
+				// TODO: incorporate AABBInCamera into RenderModel and RenderModelRigged so that they don't need a pre-generated matrix, instead just using the one already
+				// being generated on the GPU.
 				if (AABBInCamera(&currObject->mesh->boundsMin, &currObject->mesh->boundsMax, &currObject->transform)) {
-					RenderModelRigged(currObject->mesh, &currObject->transform, NULL, currObject->animator);
+					RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
 				}
 			} else {
 				if (AABBInCamera(&currObject->mesh->boundsMin, &currObject->mesh->boundsMax, &currObject->transform)) {
-					RenderModel(currObject->mesh, &currObject->transform, NULL);
+					RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
 				}
 			}
 		}

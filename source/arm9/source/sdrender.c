@@ -1109,11 +1109,14 @@ void SetupMaterial(SDMaterial* mat, bool rigged) {
 	else {
 		glMaterialf(GL_EMISSION, RGB15(mat->color.x, mat->color.y, mat->color.z));
 	}
-	glMaterialf(GL_SPECULAR, RGB15(((lightColor & 0x1F) * mat->specular) >> 8, (((lightColor >> 5) & 0x1F) * mat->specular) >> 8, (((lightColor >> 10) & 0x1F) * mat->specular) >> 8));
+	// specular is OFFICIALLY un-supported. sorry. DS GPU sucks.
+	//glMaterialf(GL_SPECULAR, RGB15(((lightColor & 0x1F) * mat->specular) >> 8, (((lightColor >> 5) & 0x1F) * mat->specular) >> 8, (((lightColor >> 10) & 0x1F) * mat->specular) >> 8));
 	glPolyFmt(flags);
 	Texture* currTex = mat->texture;
-	glBindTexture(0, currTex->textureId);
-	glAssignColorTable(0, currTex->paletteId);
+	//glBindTexture(0, currTex->textureId);
+	//glAssignColorTable(0, currTex->paletteId);
+	GFX_TEX_FORMAT = currTex->textureWrite; // this is a minor optimization, but glBindTexture and glAssignColorTable accounted for about half the call time for material setup, and material setup needs to be called a lot.
+	GFX_PAL_FORMAT = currTex->paletteWrite;
 }
 
 void GetMatrixLengths(m4x4* input, Vec3* output) {
@@ -1140,47 +1143,63 @@ void GetMatrixLengths(m4x4* input, Vec3* output) {
 	output->z = divf32(4096, matLength);
 }
 
-void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *animator) {
-	Vec3 matrixSize;
-	GetMatrixLengths(matrix, &matrixSize);
+void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator) {
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
+	// ensure materials are valid...
 	VertexHeader *currVertexGroup = model->vertexGroups;
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
-	// cache up to 30 bones
-	for (int i = 0; i < 31 && i < model->skeletonCount; ++i) {
-		glMatrixMode(GL_MODELVIEW);
-		glLoadMatrix4x4(matrix);
-		// anger
-		MATRIX_MULT3x3 = matrixSize.x;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = matrixSize.y;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = 0;
-		MATRIX_MULT3x3 = matrixSize.z;
-		glMatrixMode(GL_POSITION);
-		glLoadMatrix4x4(matrix);
-		glMatrixMode(GL_MODELVIEW);
-		// get all parents
-		int parentQueue[128];
-		int parentQueueSlot = 0;
-		for (int parent = model->skeleton[i].parent; parent != -1; parent = model->skeleton[parent].parent) {
-			parentQueue[parentQueueSlot] = parent;
-			++parentQueueSlot;
-		}
-		for (int parent = parentQueueSlot - 1; parent >= 0; --parent) {
-			glMultMatrix4x4(&animator->items[parentQueue[parent]].matrix);
-		}
-		glMultMatrix4x4(&animator->items[i].matrix);
-		glMultMatrix4x4(&model->skeleton[i].inverseMatrix);
+	// a little silly, but lets push until the end of the matrix, then store our base matrix in the last bone we would use.
+	const int lastBone = Min(31, model->skeletonCount) - 1;
+	for (int i = 0; i < lastBone + 1; ++i) {
 		glPushMatrix();
 	}
-	glMatrixMode(GL_MODELVIEW);
+	// set up base object matrix
+	m4x4 rotationMatrix;
+	m4x4 rotationMatrixPrepared;
+	MakeRotationMatrix(rotation, &rotationMatrix);
+	rotationMatrix.m[3] = position->x;
+	rotationMatrix.m[7] = position->y;
+	rotationMatrix.m[11] = position->z;
+	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
+	glLoadMatrix4x4(&rotationMatrixPrepared);
+	glScalef32(scale->x, scale->y, scale->z);
+	glStoreMatrix(lastBone);
+	// cache up to 31 bones.
+	for (int i = 0; i < lastBone + 1; ++i) {
+		//glRestoreMatrix(lastBone);
+		// get all parents
+		// if parent is within stack already, then don't recalculate it!
+		if (model->skeleton[i].parent < i) {
+			// no parent! use model transform!
+			if (model->skeleton[i].parent < 0) {
+				glRestoreMatrix(lastBone);
+			} else {
+				glRestoreMatrix(model->skeleton[i].parent);
+			}
+		} else {
+			glRestoreMatrix(lastBone);
+			int parentQueue[128];
+			int parentQueueSlot = 0;
+			for (int parent = model->skeleton[i].parent; parent != -1; parent = model->skeleton[parent].parent) {
+				parentQueue[parentQueueSlot] = parent;
+				++parentQueueSlot;
+			}
+			for (int parent = parentQueueSlot - 1; parent >= 0; --parent) {
+				glMultMatrix4x4(&animator->items[parentQueue[parent]].matrix);
+			}
+		}
+		glMultMatrix4x4(&animator->items[i].matrix);
+		glStoreMatrix(i);
+	}
+	for (int i = 0; i < lastBone + 1; ++i) {
+		// apply inverse matrices now
+		glRestoreMatrix(i);
+		glMultMatrix4x4(&model->skeleton[i].inverseMatrix);
+		glStoreMatrix(i);
+	}
 	if (model->NativeModel == NULL) {
 		int currBone = -1;
 		const int vertGroupCount = model->vertexGroupCount;
@@ -1211,7 +1230,7 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 				if (currVert->boneID != currBone) {
 					currBone = currVert->boneID;
 					if (currBone > 30) {
-						glLoadMatrix4x4(matrix);
+						//glLoadMatrix4x4(matrix);
 						// get all parents
 						int parentQueue[128];
 						int parentQueueSlot = 0;
@@ -1257,33 +1276,29 @@ void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *a
 		}
 	}
 	glPopMatrix(1);
-	if (31 > model->skeletonCount) {
+	if (32 > model->skeletonCount) {
 		glPopMatrix(model->skeletonCount - 1);
 	} else {
-		glPopMatrix(30);
+		glPopMatrix(31);
 	}
 }
 
-void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats) {
+void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats) {
 	// have to work around the DS' jank by omitting scale from the MODELVIEW matrix for normals, but not the POSITION matrix
-	Vec3 matrixSize;
-	GetMatrixLengths(matrix, &matrixSize);
+	//Vec3 matrixSize;
+	//GetMatrixLengths(matrix, &matrixSize);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
 	//glPushMatrix();
-	glLoadMatrix4x4(matrix);
-	// anger
-	MATRIX_MULT3x3 = matrixSize.x;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = matrixSize.y;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = 0;
-	MATRIX_MULT3x3 = matrixSize.z;
-	glMatrixMode(GL_POSITION);
-	glLoadMatrix4x4(matrix);
+	m4x4 rotationMatrix;
+	m4x4 rotationMatrixPrepared;
+	MakeRotationMatrix(rotation, &rotationMatrix);
+	rotationMatrix.m[3] = position->x;
+	rotationMatrix.m[7] = position->y;
+	rotationMatrix.m[11] = position->z;
+	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
+	glLoadMatrix4x4(&rotationMatrixPrepared);
+	glScalef32(scale->x, scale->y, scale->z);
 	VertexHeader *currVertexGroup = model->vertexGroups;
 	if (mats == NULL) {
 		mats = model->defaultMats;
@@ -1402,6 +1417,14 @@ void UploadTexture(Texture* input) {
 	}
 	glTexImage2D(0, 0, input->type, input->width, input->height, 0, flagValue, input->image);
 	input->uploaded = true;
+	// re-assign so we can get the palette format here...
+	if (paletteSize != 0) {
+		glAssignColorTable(0, input->paletteId);
+	}
+	// ugh, derive the data from libnds now
+	gl_texture_data *tex = (gl_texture_data*)DynamicArrayGet(&glGlob->texturePtrs, input->textureId);
+	input->textureWrite = tex->texFormat;
+	input->paletteWrite = ((gl_palette_data*)DynamicArrayGet( &glGlob->palettePtrs, tex->palIndex ))->addr;
 }
 
 void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {

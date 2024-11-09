@@ -148,8 +148,11 @@ struct Texture {
 	Texture *next;
 	int textureId;
 	int paletteId;
-	void* nativeTexture;
-	int padding4;
+	union {
+		void* nativeTexture;
+		unsigned int textureWrite;
+	};
+	unsigned int paletteWrite;
 };
 
 struct SDMaterial {
@@ -198,7 +201,7 @@ Model* FreeModelKeepCache(Model* model);
 
 void UpdateModel(Model* model);
 
-void RenderModel(Model *model, m4x4 *matrix, SDMaterial *mats);
+void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats);
 
 void UploadTexture(Texture* input);
 
@@ -216,7 +219,7 @@ void SetLightColor(int color);
 
 void SetAmbientColor(int color);
 
-void RenderModelRigged(Model *model, m4x4 *matrix, SDMaterial *mats, Animator *animator);
+void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator);
 
 void LoadAnimationFromRAM(Animation* anim);
 
