@@ -3,8 +3,6 @@
  
  See example here:https://github.com/Yackerw/StarDust-Example
 
-License: Just credit me if you use it. Either in a prominent place in game or where ever the game may be available, preferably.
-
 All in one 3D game engine, should handle everything you'd need for a 3D game on the DS, with bonus PC functionality. Made entirely in C (besides the PC XAudio2 interface, made in C++)
 
 Features:
