@@ -1153,7 +1153,7 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	}
 	// a little silly, but lets push until the end of the matrix, then store our base matrix in the last bone we would use.
 	const int lastBone = Min(31, model->skeletonCount) - 1;
-	for (int i = 0; i < lastBone + 1; ++i) {
+	for (int i = 0; i <= lastBone; ++i) {
 		glPushMatrix();
 	}
 	// set up base object matrix
@@ -1168,7 +1168,7 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	glScalef32(scale->x, scale->y, scale->z);
 	glStoreMatrix(lastBone);
 	// cache up to 31 bones.
-	for (int i = 0; i < lastBone + 1; ++i) {
+	for (int i = 0; i <= lastBone; ++i) {
 		//glRestoreMatrix(lastBone);
 		// get all parents
 		// if parent is within stack already, then don't recalculate it!
@@ -1200,6 +1200,18 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 		glMultMatrix4x4(&model->skeleton[i].inverseMatrix);
 		glStoreMatrix(i);
 	}
+	// if a mesh has > 31 bones, then we need to set up the basic matrix too
+	m4x4 matrix;
+	if (model->skeletonCount > 31) {
+		m4x4 scaleMatrix;
+		m4x4 workMatrix;
+		MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
+		CombineMatrices(&scaleMatrix, &rotationMatrix, &workMatrix);
+		MatrixToDSMatrix(&workMatrix, &matrix);
+		matrix->m[3] = position->x;
+		matrix->m[7] = position->y;
+		matrix->m[11] = position->z;
+	}
 	if (model->NativeModel == NULL) {
 		int currBone = -1;
 		const int vertGroupCount = model->vertexGroupCount;
@@ -1229,8 +1241,8 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 				const Vertex* currVert = &((&(currVertexGroup->vertices))[i2]);
 				if (currVert->boneID != currBone) {
 					currBone = currVert->boneID;
-					if (currBone > 30) {
-						//glLoadMatrix4x4(matrix);
+					if (currBone > 31) {
+						glLoadMatrix4x4(&matrix);
 						// get all parents
 						int parentQueue[128];
 						int parentQueueSlot = 0;
@@ -1276,8 +1288,8 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 		}
 	}
 	glPopMatrix(1);
-	if (32 > model->skeletonCount) {
-		glPopMatrix(model->skeletonCount - 1);
+	if (31 > model->skeletonCount) {
+		glPopMatrix(model->skeletonCount);
 	} else {
 		glPopMatrix(31);
 	}
@@ -1738,12 +1750,21 @@ Texture* LoadTexture(char* input, bool upload) {
 	return newTex;
 }
 
-void RenderModel(Model* model, m4x4* matrix, SDMaterial* mats) {
+void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats) {
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
+	m4x4 matrix;
+	m4x4 scaleMatrix;
+	m4x4 rotationMatrix;
+	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
+	MakeRotationMatrix(rotation, &rotationMatrix);
+	scaleMatrix.m[3] = position->x;
+	scaleMatrix.m[7] = position->y;
+	scaleMatrix.m[11] = position->z;
+	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
-	CombineMatricesFull(&cameraMatrix, matrix, &MVP);
+	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
 	// really big TODO: re-use materials for efficiency
 	Material renderMat;
 	InitMaterial(&renderMat);
@@ -1755,7 +1776,7 @@ void RenderModel(Model* model, m4x4* matrix, SDMaterial* mats) {
 
 	// also account for M
 	matMatrix = (m4x4*)malloc(sizeof(m4x4));
-	memcpy(matMatrix, matrix, sizeof(m4x4));
+	memcpy(matMatrix, &matrix, sizeof(m4x4));
 	SetMaterialUniform(&renderMat, "M", matMatrix);
 
 
@@ -1791,7 +1812,7 @@ void RenderModel(Model* model, m4x4* matrix, SDMaterial* mats) {
 			modelDrawCalls[modelDrawCallCount].animator = NULL;
 			modelDrawCalls[modelDrawCallCount].materialId = i;
 			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(SDMaterial));
-			modelDrawCalls[modelDrawCallCount].matrix = *matrix;
+			modelDrawCalls[modelDrawCallCount].matrix = matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
 			Vec3 zero = { 0, 0, 0 };
 			MatrixTimesVec3(&MVP, &zero, &modelDrawCalls[modelDrawCallCount].position);
@@ -1823,12 +1844,21 @@ void RenderModel(Model* model, m4x4* matrix, SDMaterial* mats) {
 	DeleteMaterial(&renderMat);
 }
 
-void RenderModelRigged(Model* model, m4x4* matrix, SDMaterial* mats, Animator* animator) {
+void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator) {
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
+	m4x4 matrix;
+	m4x4 scaleMatrix;
+	m4x4 rotationMatrix;
+	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
+	MakeRotationMatrix(rotation, &rotationMatrix);
+	scaleMatrix.m[3] = position->x;
+	scaleMatrix.m[7] = position->y;
+	scaleMatrix.m[11] = position->z;
+	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
-	CombineMatricesFull(&cameraMatrix, matrix, &MVP);
+	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
 	// really big TODO: re-use materials for efficiency
 	Material renderMat;
 	InitMaterial(&renderMat);
@@ -1840,7 +1870,7 @@ void RenderModelRigged(Model* model, m4x4* matrix, SDMaterial* mats, Animator* a
 
 	// also account for M
 	matMatrix = (m4x4*)malloc(sizeof(m4x4));
-	memcpy(matMatrix, matrix, sizeof(m4x4));
+	memcpy(matMatrix, &matrix, sizeof(m4x4));
 	SetMaterialUniform(&renderMat, "M", matMatrix);
 
 
@@ -1913,7 +1943,7 @@ void RenderModelRigged(Model* model, m4x4* matrix, SDMaterial* mats, Animator* a
 			modelDrawCalls[modelDrawCallCount].animator = animator;
 			modelDrawCalls[modelDrawCallCount].materialId = i;
 			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(Material));
-			modelDrawCalls[modelDrawCallCount].matrix = *matrix;
+			modelDrawCalls[modelDrawCallCount].matrix = matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
 			Vec3 zero = { 0, 0, 0 };
 			MatrixTimesVec3(&MVP, &zero, &modelDrawCalls[modelDrawCallCount].position);
