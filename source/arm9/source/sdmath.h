@@ -38,6 +38,18 @@ typedef struct {
 typedef struct {
 	union {
 		struct {
+			short x;
+			short y;
+			short z;
+			short w;
+		};
+		short coords[4];
+	};
+} Vec4s;
+
+typedef struct {
+	union {
+		struct {
 			f32 x;
 			f32 y;
 			f32 z;
@@ -45,6 +57,17 @@ typedef struct {
 		f32 coords[3];
 	};
 } Vec3;
+
+typedef struct {
+	union {
+		struct {
+			short x;
+			short y;
+			short z;
+		};
+		short coords[3];
+	};
+} Vec3s;
 
 typedef struct {
 	union {

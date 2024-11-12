@@ -510,7 +510,7 @@ f32 Pow(f32 value, f32 toPow) {
 	return retValue;
 }
 
-void NormalFromVerts(Vec3 *vert1, Vec3 *vert2, Vec3 *vert3, Vec3 *out) {
+void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out) {
 	Vec3 U, V;
 	U.x = vert2->x - vert1->x;
 	U.y = vert2->y - vert1->y;
@@ -525,7 +525,7 @@ void NormalFromVerts(Vec3 *vert1, Vec3 *vert2, Vec3 *vert3, Vec3 *out) {
 }
 
 // above function is unreliable at low precision
-void NormalFromVertsFloat(Vec3* vert1, Vec3* vert2, Vec3* vert3, Vec3* out) {
+void NormalFromVertsFloat(Vec3s* vert1, Vec3s* vert2, Vec3s* vert3, Vec3s* out) {
 	Vec3f U, V;
 	U.x = f32tofloat(vert2->x - vert1->x);
 	U.y = f32tofloat(vert2->y - vert1->y);

@@ -9,6 +9,10 @@
 //#define FLOATBARY
 #define BARY64
 
+// these are the same, but they're different defines for clarity anyways
+#define ShortToVec3(sh, ve) (ve).x = (sh).x; (ve).y = (sh).y; (ve).z = (sh).z
+#define Vec3ToShort(ve, sh) (sh).x = (ve).x; (sh).y = (ve).y; (sh).z = (ve).z
+
 float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 	return x1 * x2 + y1 * y2 + z1 * z2;
 }
@@ -62,11 +66,18 @@ long long divf64(long long left, long long right) {
 }
 #endif
 
+void Vec3Subtractions(Vec3s* left, Vec3s* right, Vec3* out) {
+	out->x = left->x - right->x;
+	out->y = left->y - right->y;
+	out->z = left->z - right->z;
+}
+
 Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 v0, v1, v2;
-	Vec3Subtraction(&tri->verts[1], &tri->verts[0], &v0);
-	Vec3Subtraction(&tri->verts[2], &tri->verts[0], &v1);
-	Vec3Subtraction(point, &tri->verts[0], &v2);
+	Vec3Subtractions(&tri->verts[1], &tri->verts[0], &v0);
+	Vec3Subtractions(&tri->verts[2], &tri->verts[0], &v1);
+	ShortToVec3(tri->verts[0], v2);
+	Vec3Subtraction(point, &v2, &v2);
 	// FLOATBARY is...probably a big bottleneck. maybe.
 	#ifdef FLOATBARY
 	float v0x = f32tofloat(v0.x);
@@ -189,7 +200,11 @@ bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 
 	// and finally, line collision
 	for (int i = 0; i < 3; ++i) {
 		Vec3 closestPoint;
-		if (SphereOnLine(sphere, &tri->verts[i], &tri->verts[(i + 1) % 3], &closestPoint)) {
+		Vec3 v1;
+		Vec3 v2;
+		ShortToVec3(tri->verts[i], v1);
+		ShortToVec3(tri->verts[(i + 1) % 3], v2);
+		if (SphereOnLine(sphere, &v1, &v2, &closestPoint)) {
 			// get penetration
 			Vec3 lineDiff;
 			Vec3Subtraction(sphere->position, &closestPoint, &lineDiff);
@@ -206,11 +221,13 @@ bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 
 bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
 	for (int i = 0; i < 3; ++i) {
 		f32 pointMag;
-		if (SphereOnPoint(sphere, &tri->verts[i], &pointMag)) {
+		Vec3 v;
+		ShortToVec3(tri->verts[i], v);
+		if (SphereOnPoint(sphere, &v, &pointMag)) {
 			// get penetration and normal
 			*penetration = pointMag;
 			// normal; subtract the two vectors, then normalize
-			Vec3Subtraction(sphere->position, &tri->verts[i], normal);
+			Vec3Subtraction(sphere->position, &v, normal);
 			Normalize(normal, normal);
 			return true;
 		}
@@ -229,7 +246,9 @@ bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3
 	newSpherePosition.y = sphere->position->y - tri->verts[0].y;
 	newSpherePosition.z = sphere->position->z - tri->verts[0].z;
 	// finally, just apply a dot product
-	f32 dot = DotProduct(&newSpherePosition, &(tri->normal));
+	Vec3 n;
+	ShortToVec3(tri->normal, n);
+	f32 dot = DotProduct(&newSpherePosition, &n);
 	// don't collide if we're beneath the polygon!
 	if (dot >= sphere->radius || dot < 0) {
 		*onPlane = false;
@@ -284,7 +303,7 @@ bool SphereOnSphere(CollisionSphere *sphere1, CollisionSphere *sphere2, f32 *pen
 	return false;
 }
 
-void GenerateBoundsForBlocks(Vec3 *min, Vec3 *max, CollisionBlock* blocks) {
+void GenerateBoundsForBlocks(Vec3s *min, Vec3s *max, CollisionBlock* blocks) {
 	Vec3 middle;
 	middle.x = (min->x + max->x) / 2;
 	middle.y = (min->y + max->y) / 2;
@@ -342,6 +361,18 @@ bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 lenie
 		maxA->z >= minB->z - leniency);
 }
 
+bool AABBCheckLeniencyShort(Vec3s* minA, Vec3s* maxA, Vec3s* minB, Vec3s* maxB, f32 leniency) {
+	bool fuck[6];
+	fuck[2] = minA->y <= maxB->y + leniency;
+	fuck[3] = maxA->y >= minB->y - leniency;
+	return (minA->x <= maxB->x + leniency &&
+		maxA->x >= minB->x - leniency &&
+		minA->y <= maxB->y + leniency &&
+		maxA->y >= minB->y - leniency &&
+		minA->z <= maxB->z + leniency &&
+		maxA->z >= minB->z - leniency);
+}
+
 void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currDepth) {
 	++currDepth;
 	currBlock->subdivided = false;
@@ -351,7 +382,7 @@ void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currD
 	// iterate over all the collision triangles in the mesh and see if they fall within the block
 	for (int i = 0; i < currMesh->triCount; ++i) {
 		// fixes occasionally broken faces on DS
-		if (AABBCheckLeniency(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax, 1)) {
+		if (AABBCheckLeniencyShort(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax, 1)) {
 			currBlock->triangleList[currBlock->triCount] = i;
 			++currBlock->triCount;
 			// max tris, either start a new subdivision or increase tri count
@@ -456,12 +487,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					// fix j to increment for 1 vert instead of 1 tri
 					j -= 2;
 				}
-				retValue->triangles[currTri].boundsMax.x = -4000000;
-				retValue->triangles[currTri].boundsMax.y = -4000000;
-				retValue->triangles[currTri].boundsMax.z = -4000000;
-				retValue->triangles[currTri].boundsMin.x = 4000000;
-				retValue->triangles[currTri].boundsMin.y = 4000000;
-				retValue->triangles[currTri].boundsMin.z = 4000000;
+				retValue->triangles[currTri].boundsMax.x = -32768;
+				retValue->triangles[currTri].boundsMax.y = -32768;
+				retValue->triangles[currTri].boundsMax.z = -32768;
+				retValue->triangles[currTri].boundsMin.x = 32767;
+				retValue->triangles[currTri].boundsMin.y = 32767;
+				retValue->triangles[currTri].boundsMin.z = 32767;
 				// calculate bounds extents now
 				for (int k = 0; k < 3; ++k) {
 					retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
@@ -482,12 +513,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 						retValue->triangles[currTri].verts[k].y = currVerts[j + k].y;
 						retValue->triangles[currTri].verts[k].z = currVerts[j + k].z;
 					}
-					retValue->triangles[currTri].boundsMax.x = -4000000;
-					retValue->triangles[currTri].boundsMax.y = -4000000;
-					retValue->triangles[currTri].boundsMax.z = -4000000;
-					retValue->triangles[currTri].boundsMin.x = 4000000;
-					retValue->triangles[currTri].boundsMin.y = 4000000;
-					retValue->triangles[currTri].boundsMin.z = 4000000;
+					retValue->triangles[currTri].boundsMax.x = -32768;
+					retValue->triangles[currTri].boundsMax.y = -32768;
+					retValue->triangles[currTri].boundsMax.z = -32768;
+					retValue->triangles[currTri].boundsMin.x = 32767;
+					retValue->triangles[currTri].boundsMin.y = 32767;
+					retValue->triangles[currTri].boundsMin.z = 32767;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
 						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, currVerts[j + k].x);
@@ -508,17 +539,17 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].verts[2] = retValue->triangles[currTri - 1].verts[2];
 					// reverse winding if it's a strip
 					if (currVertexGroup->bitFlags & VTX_STRIPS) {
-						Vec3 tmp = retValue->triangles[currTri].verts[0];
+						Vec3s tmp = retValue->triangles[currTri].verts[0];
 						retValue->triangles[currTri].verts[0] = retValue->triangles[currTri - 1].verts[1];
 						retValue->triangles[currTri].verts[1] = tmp;
 						retValue->triangles[currTri].verts[2] = retValue->triangles[currTri - 1].verts[2];
 					}
-					retValue->triangles[currTri].boundsMax.x = -4000000;
-					retValue->triangles[currTri].boundsMax.y = -4000000;
-					retValue->triangles[currTri].boundsMax.z = -4000000;
-					retValue->triangles[currTri].boundsMin.x = 4000000;
-					retValue->triangles[currTri].boundsMin.y = 4000000;
-					retValue->triangles[currTri].boundsMin.z = 4000000;
+					retValue->triangles[currTri].boundsMax.x = -32768;
+					retValue->triangles[currTri].boundsMax.y = -32768;
+					retValue->triangles[currTri].boundsMax.z = -32768;
+					retValue->triangles[currTri].boundsMin.x = 32767;
+					retValue->triangles[currTri].boundsMin.y = 32767;
+					retValue->triangles[currTri].boundsMin.z = 32767;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
 						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
@@ -533,7 +564,7 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 				}
 				else {
 					// create virtual quad
-					Vec3 quad[4];
+					Vec3s quad[4];
 					quad[0].x = currVerts[j - 1].x;
 					quad[0].y = currVerts[j - 1].y;
 					quad[0].z = currVerts[j - 1].z;
@@ -552,12 +583,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].verts[0] = quad[2];
 					retValue->triangles[currTri].verts[1] = quad[1];
 					retValue->triangles[currTri].verts[2] = quad[0];
-					retValue->triangles[currTri].boundsMax.x = -4000000;
-					retValue->triangles[currTri].boundsMax.y = -4000000;
-					retValue->triangles[currTri].boundsMax.z = -4000000;
-					retValue->triangles[currTri].boundsMin.x = 4000000;
-					retValue->triangles[currTri].boundsMin.y = 4000000;
-					retValue->triangles[currTri].boundsMin.z = 4000000;
+					retValue->triangles[currTri].boundsMax.x = -32768;
+					retValue->triangles[currTri].boundsMax.y = -32768;
+					retValue->triangles[currTri].boundsMax.z = -32768;
+					retValue->triangles[currTri].boundsMin.x = 32767;
+					retValue->triangles[currTri].boundsMin.y = 32767;
+					retValue->triangles[currTri].boundsMin.z = 32767;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
 						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
@@ -573,12 +604,12 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 					retValue->triangles[currTri].verts[0] = quad[1];
 					retValue->triangles[currTri].verts[1] = quad[2];
 					retValue->triangles[currTri].verts[2] = quad[3];
-					retValue->triangles[currTri].boundsMax.x = -4000000;
-					retValue->triangles[currTri].boundsMax.y = -4000000;
-					retValue->triangles[currTri].boundsMax.z = -4000000;
-					retValue->triangles[currTri].boundsMin.x = 4000000;
-					retValue->triangles[currTri].boundsMin.y = 4000000;
-					retValue->triangles[currTri].boundsMin.z = 4000000;
+					retValue->triangles[currTri].boundsMax.x = -32768;
+					retValue->triangles[currTri].boundsMax.y = -32768;
+					retValue->triangles[currTri].boundsMax.z = -32768;
+					retValue->triangles[currTri].boundsMin.x = 32767;
+					retValue->triangles[currTri].boundsMin.y = 32767;
+					retValue->triangles[currTri].boundsMin.z = 32767;
 					// calculate bounds extents now
 					for (int k = 0; k < 3; ++k) {
 						retValue->triangles[currTri].boundsMax.x = Max(retValue->triangles[currTri].boundsMax.x, retValue->triangles[currTri].verts[k].x);
@@ -601,7 +632,10 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 	Vec3Subtraction(&retValue->AABBPosition, &retValue->AABBBounds, &AABBMin);
 	Vec3 AABBMax;
 	Vec3Addition(&retValue->AABBPosition, &retValue->AABBBounds, &AABBMax);
-	GenerateBoundsForBlocks(&AABBMin, &AABBMax, retValue->blocks);
+	Vec3s AABBMins, AABBMaxs;
+	Vec3ToShort(AABBMin, AABBMins);
+	Vec3ToShort(AABBMax, AABBMaxs);
+	GenerateBoundsForBlocks(&AABBMins, &AABBMaxs, retValue->blocks);
 	for (int i = 0; i < 8; ++i) {
 		GenerateOctree(&retValue->blocks[i], retValue, 0);
 	}
@@ -612,7 +646,10 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, CollisionBlock* block, unsigned short** retValue, int* maxSize, int* currSize) {
 	if (block->subdivided) {
 		for (int i = 0; i < 8; ++i) {
-			if (AABBCheck(min, max, &block->blocks[i].boundsMin, &block->blocks[i].boundsMax)) {
+			Vec3 blockMin, blockMax;
+			ShortToVec3(block->blocks[i].boundsMin, blockMin);
+			ShortToVec3(block->blocks[i].boundsMax, blockMax);
+			if (AABBCheck(min, max, &blockMin, &blockMax)) {
 				FindTrianglesFromOctreeInternal(min, max, mesh, &block->blocks[i], retValue, maxSize, currSize);
 			}
 		}
@@ -621,7 +658,10 @@ void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, C
 		// ensure we overlap the triangles
 		for (int i = 0; i < block->triCount; ++i) {
 			const CollisionTriangle* currTri = &mesh->triangles[block->triangleList[i]];
-			if (AABBCheck(min, max, &currTri->boundsMin, &currTri->boundsMax)) {
+			Vec3 vMin, vMax;
+			ShortToVec3(currTri->boundsMin, vMin);
+			ShortToVec3(currTri->boundsMax, vMax);
+			if (AABBCheck(min, max, &vMin, &vMax)) {
 				// omit duplicates
 				bool toContinue = false;
 				for (int j = 0; j < *currSize; ++j) {
@@ -649,7 +689,10 @@ unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* mesh
 	int maxSize = 512;
 	int currSize = 0;
 	for (int i = 0; i < 8; ++i) {
-		if (AABBCheck(min, max, &meshCollider->blocks[i].boundsMin, &meshCollider->blocks[i].boundsMax)) {
+		Vec3 blockMin, blockMax;
+		ShortToVec3(meshCollider->blocks[i].boundsMin, blockMin);
+		ShortToVec3(meshCollider->blocks[i].boundsMax, blockMax);
+		if (AABBCheck(min, max, &blockMin, &blockMax)) {
 			FindTrianglesFromOctreeInternal(min, max, meshCollider, &meshCollider->blocks[i], &retValue, &maxSize, &currSize);
 		}
 	}
@@ -819,7 +862,10 @@ bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f3
 	if (hitPos == NULL) {
 		hitPos = &tmpHitPos;
 	}
-	if (RayOnPlane(point, direction, &triangle->normal, DotProduct(&triangle->normal, &triangle->verts[0]), t, hitPos)) {
+	Vec3 n, v;
+	ShortToVec3(triangle->normal, n);
+	ShortToVec3(triangle->verts[0], v);
+	if (RayOnPlane(point, direction, &n, DotProduct(&n, &v), t, hitPos)) {
 		Vec3 barycentric = BarycentricCoords(triangle, hitPos);
 		if (barycentric.x >= 0 && barycentric.x <= 4096
 			&& barycentric.y >= 0 && barycentric.y <= 4096
@@ -832,6 +878,7 @@ bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f3
 }
 
 int GetQuadTreeCountSub(CollisionBlock* block) {
+	// potentially recode this to do the subdivided check before calling on it, to avoid extra function calls as a minor optimization
 	int count = 0;
 	if (block->subdivided) {
 		for (int i = 0; i < 8; ++i) {
@@ -858,8 +905,11 @@ void RaycastQuadTreeSub(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin,
 	f32 t;
 	if (!block->subdivided) {
 		if (block->triCount > 0) {
-			if (AABBCheck(AABBMin, AABBMax, &block->boundsMin, &block->boundsMax)) {
-				if (RayOnAABB(point, direction, &block->boundsMin, &block->boundsMax, NULL, &t)) {
+			Vec3 bMin, bMax;
+			ShortToVec3(block->boundsMin, bMin);
+			ShortToVec3(block->boundsMax, bMax);
+			if (AABBCheck(AABBMin, AABBMax, &bMin, &bMax)) {
+				if (RayOnAABB(point, direction, &bMin, &bMax, NULL, &t)) {
 					if (t <= length) {
 						hitBlocks[*hitBlockPosition] = block;
 						*hitBlockPosition += 1;
@@ -1000,9 +1050,11 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 			++realTriCount;
 
 			// raycast the triangle now, starting with the AABB
-			Vec3* newBoundsMin = &mesh->triangles[hitBlocks[i]->triangleList[j]].boundsMin;
-			Vec3* newBoundsMax = &mesh->triangles[hitBlocks[i]->triangleList[j]].boundsMax;
-			if (AABBCheck(&rayAABBMin, &rayAABBMax, newBoundsMin, newBoundsMax)) {
+			Vec3 newBoundsMin;
+			Vec3 newBoundsMax;
+			ShortToVec3(mesh->triangles[hitBlocks[i]->triangleList[j]].boundsMin, newBoundsMin);
+			ShortToVec3(mesh->triangles[hitBlocks[i]->triangleList[j]].boundsMax, newBoundsMax);
+			if (AABBCheck(&rayAABBMin, &rayAABBMax, &newBoundsMin, &newBoundsMax)) {
 				//bool inAABB = (newPoint.x >= newBoundsMin->x && newPoint.x <= newBoundsMax->x &&
 					//newPoint.y >= newBoundsMin->y && newPoint.y <= newBoundsMax->y &&
 					//newPoint.z >= newBoundsMin->z && newPoint.z <= newBoundsMax->z);
@@ -1041,7 +1093,8 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 			*triId = closestTri;
 		}
 		if (normal != NULL) {
-			*normal = mesh->triangles[closestTri].normal;
+			//*normal = mesh->triangles[closestTri].normal;
+			ShortToVec3(mesh->triangles[closestTri].normal, *normal);
 		}
 	}
 	free(trisToCheck);

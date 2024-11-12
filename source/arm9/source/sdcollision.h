@@ -6,19 +6,19 @@
 
 
 typedef struct {
-	Vec3 verts[3];
-	Vec3 normal;
-	Vec3 boundsMin;
-	Vec3 boundsMax;
+	Vec3s verts[3];
+	Vec3s normal;
+	Vec3s boundsMin;
+	Vec3s boundsMax;
 } CollisionTriangle;
 
 typedef struct CollisionBlock CollisionBlock;
 
 struct CollisionBlock {
 	bool subdivided;
-	int triCount;
-	Vec3 boundsMin;
-	Vec3 boundsMax;
+	unsigned short triCount;
+	Vec3s boundsMin;
+	Vec3s boundsMax;
 	union {
 		unsigned short *triangleList;
 		CollisionBlock *blocks;
