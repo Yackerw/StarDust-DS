@@ -362,9 +362,6 @@ bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 lenie
 }
 
 bool AABBCheckLeniencyShort(Vec3s* minA, Vec3s* maxA, Vec3s* minB, Vec3s* maxB, f32 leniency) {
-	bool fuck[6];
-	fuck[2] = minA->y <= maxB->y + leniency;
-	fuck[3] = maxA->y >= minB->y - leniency;
 	return (minA->x <= maxB->x + leniency &&
 		maxA->x >= minB->x - leniency &&
 		minA->y <= maxB->y + leniency &&
