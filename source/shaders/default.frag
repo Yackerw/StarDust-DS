@@ -3,7 +3,6 @@ out vec4 color;
 
 uniform sampler2D mainTexture;
 uniform vec4 diffColor;
-uniform int unlit;
 #include lighting.glh
 
 in vec2 UV;
@@ -16,7 +15,5 @@ void main() {
 	if (color.a <= 0) {
 		discard;
 	}
-	if (unlit == 0) {
-		color.rgb = ApplyLighting(color.rgb, normalize(normal));
-	}
+	color.rgb = ApplyLighting(color.rgb, normalize(normal));
 }
