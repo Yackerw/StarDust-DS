@@ -208,6 +208,10 @@ void QuatTimesQuat(Quaternion *left, Quaternion *right, Quaternion *out) {
 
 void QuatNormalize(Quaternion *input) {
 	f32 magnitude = sqrtf32(mulf32(input->x, input->x) + mulf32(input->y, input->y) + mulf32(input->z, input->z) + mulf32(input->w, input->w));
+	if (magnitude == 0) {
+		input->w = 4096;
+		return;
+	}
 	input->x = divf32(input->x, magnitude);
 	input->y = divf32(input->y, magnitude);
 	input->z = divf32(input->z, magnitude);
@@ -373,6 +377,12 @@ extern inline f32 SqrMagnitude(Vec3 *vec) {
 
 extern inline void Normalize(Vec3 *vec, Vec3 *out) {
 	f32 magnitude = Magnitude(vec);
+	if (magnitude == 0) {
+		out->x = 0;
+		out->y = 0;
+		out->z = 0;
+		return;
+	}
 	out->x = divf32(vec->x, magnitude);
 	out->y = divf32(vec->y, magnitude);
 	out->z = divf32(vec->z, magnitude);

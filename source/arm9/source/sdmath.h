@@ -184,9 +184,9 @@ inline f32 DeltaAngle(f32 dir1, f32 dir2);
 
 f32 Pow(f32 value, f32 toPow);
 
-void NormalFromVerts(Vec3 *vert1, Vec3 *vert2, Vec3 *vert3, Vec3 *out);
+void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out);
 
-void NormalFromVertsFloat(Vec3* vert1, Vec3* vert2, Vec3* vert3, Vec3* out);
+void NormalFromVertsFloat(Vec3s* vert1, Vec3s* vert2, Vec3s* vert3, Vec3s* out);
 
 void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret);
 

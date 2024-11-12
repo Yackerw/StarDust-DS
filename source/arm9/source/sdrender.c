@@ -49,7 +49,7 @@ unsigned short subBackground[32 * 32];
 #endif
 
 Vec3 cameraPosition;
-Quaternion cameraRotation;
+Quaternion cameraRotation = {0, 0, 0, 4096};
 f32 cameraFOV = 8192;
 f32 cameraNear = 900;
 f32 cameraFar = 1409600;
@@ -772,19 +772,145 @@ void UpdateModel(Model* model) {
 	nativeModel->boneIndexCount = vertCount;
 	nativeModel->weightCount = vertCount;
 
+	// only create a new submesh for each material change
+	int materialChangeCount = 0;
+	currHeader = model->vertexGroups;
+	int prevQuad = 0;
+	for (int i = 0; i < model->vertexGroupCount; ++i) {
+		if (currHeader->bitFlags & VTX_MATERIAL_CHANGE || (currHeader->bitFlags & VTX_QUAD) != prevQuad) {
+			++materialChangeCount;
+			prevQuad = currHeader->bitFlags & VTX_QUAD;
+		}
+		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
+	}
 
-	SetSubmeshCount(nativeModel, model->vertexGroupCount);
+	prevQuad = 0;
+	SetSubmeshCount(nativeModel, materialChangeCount);
 	currVert = 0;
 	currHeader = model->vertexGroups;
+	int subMeshId = 0;
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
-		int* tris = (int*)malloc(sizeof(int) * currHeader->count);
-		for (int j = 0; j < currHeader->count; ++j) {
-			tris[j] = currVert;
-			++currVert;
+		// allocate enough memory for the whole thing until next incompatible material
+		int triCount = 0;
+		VertexHeader* headerIterator = currHeader;
+		prevQuad = currHeader->bitFlags & VTX_QUAD;
+		for (int j = i; j < model->vertexGroupCount; ++j) {
+			if ((headerIterator->bitFlags & VTX_MATERIAL_CHANGE || (headerIterator->bitFlags & VTX_QUAD) != prevQuad) && j != i) {
+				break;
+			}
+			if (!(headerIterator->bitFlags & VTX_QUAD)) {
+				if (headerIterator->bitFlags & VTX_STRIPS) {
+					triCount += 3 + (headerIterator->count - 3) * 3;
+				}
+				else {
+					triCount += headerIterator->count;
+				}
+			}
+			else {
+				if (headerIterator->bitFlags & VTX_STRIPS) {
+					// 2 verts for 2 triangles, times 3
+					triCount += 6 + (headerIterator->count - 4) * 3;
+				}
+				else {
+					triCount += (headerIterator->count / 4) * 6;
+				}
+			}
+			prevQuad = currHeader->bitFlags & VTX_QUAD;
+			headerIterator = (VertexHeader*)((uint32_t)(&(headerIterator->vertices)) + (uint32_t)(sizeof(Vertex) * headerIterator->count));
 		}
-		SetSubmeshTriangles(nativeModel, i, tris, currHeader->count);
+		int* tris = (int*)calloc(sizeof(int) * triCount, 1);
+		int triPos = 0;
+		while (currHeader != headerIterator) {
+			if (!(currHeader->bitFlags & VTX_QUAD)) {
+				if (!(currHeader->bitFlags & VTX_STRIPS)) {
+					for (int j = 0; j < currHeader->count; ++j) {
+						tris[triPos] = currVert;
+						++currVert;
+						++triPos;
+					}
+				}
+				else {
+					// add first triangle
+					tris[triPos] = currVert;
+					tris[triPos + 1] = currVert + 1;
+					tris[triPos + 2] = currVert + 2;
+					currVert += 3;
+					triPos += 3;
+					int stripIterator = 0;
+					for (int j = 3; j < currHeader->count; ++j) {
+						if ((stripIterator & 1) == 0) {
+							tris[triPos] = currVert - 2;
+							tris[triPos + 2] = currVert - 1;
+							tris[triPos + 1] = currVert;
+						}
+						else {
+							tris[triPos + 2] = currVert;
+							tris[triPos + 1] = currVert - 1;
+							tris[triPos] = currVert - 2;
+						}
+
+						triPos += 3;
+						++currVert;
+						++stripIterator;
+					}
+				}
+			}
+			else {
+				if (!(currHeader->bitFlags & VTX_STRIPS)) {
+					int quadTracker = 0;
+					for (int j = 0; j < currHeader->count; ++j) {
+						tris[triPos] = currVert;
+						++currVert;
+						++triPos;
+						++quadTracker;
+						if (quadTracker % 4 == 0) {
+							tris[triPos] = currVert - 4;
+							++triPos;
+							tris[triPos] = currVert - 2;
+							++triPos;
+						}
+					}
+				}
+				else {
+					// create initial quad
+					tris[triPos] = currVert;
+					tris[triPos + 1] = currVert + 1;
+					tris[triPos + 2] = currVert + 2;
+					triPos += 3;
+					currVert += 3;
+					tris[triPos] = currVert - 2;
+					tris[triPos + 1] = currVert;
+					tris[triPos + 2] = currVert - 1;
+					triPos += 3;
+					++currVert;
+					// now, un-stripify
+					for (int j = 4; j < currHeader->count; j += 2) {
+						// create virtual quad
+						int quad[4];
+						quad[0] = currVert - 1;
+						quad[1] = currVert - 2;
+						quad[2] = currVert + 1;
+						quad[3] = currVert;
+						currVert += 2;
+						// create two triangles from quads
+						tris[triPos] = quad[2];
+						tris[triPos + 1] = quad[1];
+						tris[triPos + 2] = quad[0];
+						triPos += 3;
+						tris[triPos] = quad[1];
+						tris[triPos + 1] = quad[2];
+						tris[triPos + 2] = quad[3];
+						triPos += 3;
+					}
+				}
+			}
+			currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
+			++i;
+		}
+		SetSubmeshTriangles(nativeModel, subMeshId, tris, triCount);
 		free(tris);
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
+		++subMeshId;
+		--i;
 	}
 	UpdateMesh(nativeModel);
 	

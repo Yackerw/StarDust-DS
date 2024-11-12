@@ -6,8 +6,8 @@
 #define OCTREE_MAX_DEPTH 10
 #define OCTREE_MAX_TRIS 40
 // note: barely noticeable slowdown from this, and fixes a bug with large polygons
-//#define FLOATBARY
-#define BARY64
+#define FLOATBARY
+//#define BARY64
 
 // these are the same, but they're different defines for clarity anyways
 #define ShortToVec3(sh, ve) (ve).x = (sh).x; (ve).y = (sh).y; (ve).z = (sh).z
