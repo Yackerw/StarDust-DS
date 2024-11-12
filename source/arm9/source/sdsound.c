@@ -452,14 +452,17 @@ void StopSoundEffectInternal(int id) {
 	}
 }
 
+#define Maxf(x, y) ((x) < (y) ? (y) : (x))
+#define Minf(x, y) ((x) > (y) ? (y) : (x))
+
 void MixByte(PlayingSoundData* currSound, short* output, const int samplesToWrite) {
 	const bool stereo = currSound->sound->stereo;
-	float pan = currSound->pan * 2.0f - 1.0f;
-	const float leftVolume = currSound->volume * (1.0f - Max(pan, 0));
-	const float rightVolume = currSound->volume * (1.0f + Min(pan, 0));
+	float pan = f32tofloat(currSound->pan) * 2.0f - 1.0f;
+	const float leftVolume = f32tofloat(currSound->volume) * (1.0f - Maxf(pan, 0));
+	const float rightVolume = f32tofloat(currSound->volume) * (1.0f + Minf(pan, 0));
 	const int dataSize = currSound->sound->dataSize;
 
-	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * currSound->pitch;
+	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * f32tofloat(currSound->pitch);
 
 	for (int i = 0; i < samplesToWrite; i += 2) {
 		if (currSound->soundPosition >= dataSize) {
@@ -492,12 +495,12 @@ void MixByte(PlayingSoundData* currSound, short* output, const int samplesToWrit
 
 void MixShort(PlayingSoundData* currSound, short* output, const int samplesToWrite) {
 	const bool stereo = currSound->sound->stereo;
-	float pan = currSound->pan * 2.0f - 1.0f;
-	const float leftVolume = currSound->volume * (1.0f - Max(pan, 0));
-	const float rightVolume = currSound->volume * (1.0f + Min(pan, 0));
+	float pan = f32tofloat(currSound->pan) * 2.0f - 1.0f;
+	const float leftVolume = f32tofloat(currSound->volume) * (1.0f - Maxf(pan, 0));
+	const float rightVolume = f32tofloat(currSound->volume) * (1.0f + Minf(pan, 0));
 	const int dataSizeDiv2 = currSound->sound->dataSize / 2;
 
-	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * currSound->pitch;
+	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * f32tofloat(currSound->pitch);
 
 	for (int i = 0; i < samplesToWrite; i += 2) {
 		if (currSound->soundPosition >= dataSizeDiv2) {
@@ -530,12 +533,12 @@ void MixShort(PlayingSoundData* currSound, short* output, const int samplesToWri
 
 void MixByteStreamed(PlayingSoundData* currSound, short* output, const int samplesToWrite) {
 	const bool stereo = currSound->sound->stereo;
-	float pan = currSound->pan * 2.0f - 1.0f;
-	const float leftVolume = currSound->volume * (1.0f - Max(pan, 0));
-	const float rightVolume = currSound->volume * (1.0f + Min(pan, 0));
+	float pan = f32tofloat(currSound->pan) * 2.0f - 1.0f;
+	const float leftVolume = f32tofloat(currSound->volume) * (1.0f - Maxf(pan, 0));
+	const float rightVolume = f32tofloat(currSound->volume) * (1.0f + Minf(pan, 0));
 	const int dataSize = currSound->sound->dataSize;
 
-	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * currSound->pitch;
+	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * f32tofloat(currSound->pitch);
 
 	for (int i = 0; i < samplesToWrite; i += 2) {
 		if (currSound->soundPosition >= dataSize) {
@@ -574,12 +577,12 @@ void MixByteStreamed(PlayingSoundData* currSound, short* output, const int sampl
 
 void MixShortStreamed(PlayingSoundData* currSound, short* output, const int samplesToWrite) {
 	const bool stereo = currSound->sound->stereo;
-	float pan = currSound->pan * 2.0f - 1.0f;
-	const float leftVolume = currSound->volume * (1.0f - Max(pan, 0));
-	const float rightVolume = currSound->volume * (1.0f + Min(pan, 0));
+	float pan = f32tofloat(currSound->pan) * 2.0f - 1.0f;
+	const float leftVolume = f32tofloat(currSound->volume) * (1.0f - Maxf(pan, 0));
+	const float rightVolume = f32tofloat(currSound->volume) * (1.0f + Minf(pan, 0));
 	const int dataSizeDiv2 = currSound->sound->dataSize / 2;
 
-	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * currSound->pitch;
+	const float incrementor = (currSound->sound->sampleRate / 44100.0f) * f32tofloat(currSound->pitch);
 
 	for (int i = 0; i < samplesToWrite; i += 2) {
 		if (currSound->soundPosition >= dataSizeDiv2) {
@@ -702,9 +705,9 @@ void PlayMusic(char* filedir, int offset) {
 		StopMusic();
 	}
 	SoundData sd;
-	sd.pan = 0.5f;
-	sd.pitch = 1.0f;
-	sd.volume = 1.0f;
+	sd.pan = 2048;
+	sd.pitch = 4096;
+	sd.volume = 4096;
 	sd.sound = currMusic;
 	sd.loop = true;
 	if (strcmp(".wav", &filedir[strlen(filedir) - 4]) == 0) {

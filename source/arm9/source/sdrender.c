@@ -50,9 +50,9 @@ unsigned short subBackground[32 * 32];
 
 Vec3 cameraPosition;
 Quaternion cameraRotation;
-f32 cameraFOV = Angle16ToNative(8192);
-f32 cameraNear = Fixed32ToNative(900);
-f32 cameraFar = Fixed32ToNative(1409600);
+f32 cameraFOV = 8192;
+f32 cameraNear = 900;
+f32 cameraFar = 1409600;
 m4x4 cameraMatrix;
 ViewFrustum frustum;
 
@@ -191,276 +191,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	CacheModel(retValue);
 
 #ifdef _NOTDS
-	// convert as much as possible to floats
-	for (int i = 0; i < retValue->skeletonCount; ++i) {
-		for (int j = 0; j < 16; ++j) {
-			retValue->skeleton[i].inverseMatrix.m[j] = Fixed32ToNative(*(int*)&retValue->skeleton[i].inverseMatrix.m[j]);
-		}
-		retValue->skeleton[i].position.x = Fixed32ToNative(*(int*)&retValue->skeleton[i].position.x);
-		retValue->skeleton[i].position.y = Fixed32ToNative(*(int*)&retValue->skeleton[i].position.y);
-		retValue->skeleton[i].position.z = Fixed32ToNative(*(int*)&retValue->skeleton[i].position.z);
-		retValue->skeleton[i].scale.x = Fixed32ToNative(*(int*)&retValue->skeleton[i].scale.x);
-		retValue->skeleton[i].scale.y = Fixed32ToNative(*(int*)&retValue->skeleton[i].scale.y);
-		retValue->skeleton[i].scale.z = Fixed32ToNative(*(int*)&retValue->skeleton[i].scale.z);
-		retValue->skeleton[i].rotation.x = Fixed32ToNative(*(int*)&retValue->skeleton[i].rotation.x);
-		retValue->skeleton[i].rotation.y = Fixed32ToNative(*(int*)&retValue->skeleton[i].rotation.y);
-		retValue->skeleton[i].rotation.z = Fixed32ToNative(*(int*)&retValue->skeleton[i].rotation.z);
-		retValue->skeleton[i].rotation.w = Fixed32ToNative(*(int*)&retValue->skeleton[i].rotation.w);
-	}
-	Mesh* nativeModel = (Mesh*)calloc(sizeof(Mesh), 1);
-	int vertCount = 0;
-	VertexHeader* currHeader = retValue->vertexGroups;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		vertCount += currHeader->count;
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-	Vec3* nativeVerts = (Vec3*)malloc(sizeof(Vec3) * vertCount);
-	int currVert = 0;
-	currHeader = retValue->vertexGroups;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		Vertex* verts = (Vertex*)&currHeader->vertices;
-		for (int j = 0; j < currHeader->count; ++j) {
-			nativeVerts[currVert].x = Fixed32ToNative(verts[j].x);
-			nativeVerts[currVert].y = Fixed32ToNative(verts[j].y);
-			nativeVerts[currVert].z = Fixed32ToNative(verts[j].z);
-			++currVert;
-		}
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-	SetMeshVertices(nativeModel, nativeVerts, vertCount);
-	// UVs
-	Vec2* nativeUVs = (Vec2*)malloc(sizeof(Vec2) * vertCount);
-	currVert = 0;
-	currHeader = retValue->vertexGroups;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		float UDivider = 1.0f;
-		float VDivider = 1.0f;
-		// adjust UVs from pixel scale to 0-1
-		if (retValue->defaultMats[currHeader->material].texture != NULL) {
-			UDivider = Pow(2, retValue->defaultMats[currHeader->material].texture->width + 3);
-			VDivider = Pow(2, retValue->defaultMats[currHeader->material].texture->height + 3);
-		}
-		Vertex* verts = (Vertex*)&currHeader->vertices;
-		for (int j = 0; j < currHeader->count; ++j) {
-			nativeUVs[currVert].x = (verts[j].u / 16.0f) / UDivider;
-			nativeUVs[currVert].y = (verts[j].v / 16.0f) / VDivider;
-			++currVert;
-		}
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-	SetMeshUVs(nativeModel, nativeUVs, vertCount);
-	free(nativeVerts);
-	free(nativeUVs);
-	// normals...this one's a bit trickier
-	Vec3* nativeNormals = (Vec3*)malloc(sizeof(Vec3) * vertCount);
-	currVert = 0;
-	currHeader = retValue->vertexGroups;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		Vertex* verts = (Vertex*)&currHeader->vertices;
-		for (int j = 0; j < currHeader->count; ++j) {
-			uint32_t norm = verts[j].normal;
-			int x = norm & 0x3FF;
-			if (x & 0x200) {
-				x = 0x1FF - (x & 0x1FF);
-				x = -x;
-			}
-			int y = (norm >> 10) & 0x3FF;
-			if (y & 0x200) {
-				y = 0x1FF - (y & 0x1FF);
-				y = -y;
-			}
-			int z = (norm >> 20) & 0x3FF;
-			if (z & 0x200) {
-				z = 0x1FF - (z & 0x1FF);
-				z = -z;
-			}
-			nativeNormals[currVert].x = x / 511.0f;
-			nativeNormals[currVert].y = y / 511.0f;
-			nativeNormals[currVert].z = z / 511.0f;
-			++currVert;
-		}
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-	nativeModel->normals = nativeNormals;
-	nativeModel->normalCount = vertCount;
-
-
-	currVert = 0;
-	currHeader = retValue->vertexGroups;
-
-	int* boneIDs = (int*)calloc(sizeof(int) * vertCount * 4, 1);
-	float* boneWeights = (float*)calloc(sizeof(float) * vertCount * 4, 1);
-
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		// assign weights
-		Vertex* verts = (Vertex*)&currHeader->vertices;
-		for (int j = 0; j < currHeader->count; ++j) {
-			boneIDs[currVert * 4] = verts[j].boneID;
-			boneWeights[currVert * 4] = 1.0f;
-			++currVert;
-		}
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-	nativeModel->boneIndex = boneIDs;
-	nativeModel->weights = boneWeights;
-	nativeModel->boneIndexCount = vertCount;
-	nativeModel->weightCount = vertCount;
-
-	// only create a new submesh for each material change
-	int materialChangeCount = 0;
-	currHeader = retValue->vertexGroups;
-	int prevQuad = 0;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		if (currHeader->bitFlags & VTX_MATERIAL_CHANGE || (currHeader->bitFlags & VTX_QUAD) != prevQuad) {
-			++materialChangeCount;
-			prevQuad = currHeader->bitFlags & VTX_QUAD;
-		}
-		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-	}
-
-	prevQuad = 0;
-	SetSubmeshCount(nativeModel, materialChangeCount);
-	currVert = 0;
-	currHeader = retValue->vertexGroups;
-	int subMeshId = 0;
-	for (int i = 0; i < retValue->vertexGroupCount; ++i) {
-		// allocate enough memory for the whole thing until next incompatible material
-		int triCount = 0;
-		VertexHeader* headerIterator = currHeader;
-		prevQuad = currHeader->bitFlags & VTX_QUAD;
-		for (int j = i; j < retValue->vertexGroupCount; ++j) {
-			if ((headerIterator->bitFlags & VTX_MATERIAL_CHANGE || (headerIterator->bitFlags & VTX_QUAD) != prevQuad) && j != i) {
-				break;
-			}
-			if (!(headerIterator->bitFlags & VTX_QUAD)) {
-				if (headerIterator->bitFlags & VTX_STRIPS) {
-					triCount += 3 + (headerIterator->count - 3) * 3;
-				}
-				else {
-					triCount += headerIterator->count;
-				}
-			}
-			else {
-				if (headerIterator->bitFlags & VTX_STRIPS) {
-					// 2 verts for 2 triangles, times 3
-					triCount += 6 + (headerIterator->count - 4) * 3;
-				}
-				else {
-					triCount += (headerIterator->count / 4) * 6;
-				}
-			}
-			prevQuad = currHeader->bitFlags & VTX_QUAD;
-			headerIterator = (VertexHeader*)((uint32_t)(&(headerIterator->vertices)) + (uint32_t)(sizeof(Vertex) * headerIterator->count));
-		}
-		int* tris = (int*)calloc(sizeof(int) * triCount, 1);
-		int triPos = 0;
-		while (currHeader != headerIterator) {
-			if (!(currHeader->bitFlags & VTX_QUAD)) {
-				if (!(currHeader->bitFlags & VTX_STRIPS)) {
-					for (int j = 0; j < currHeader->count; ++j) {
-						tris[triPos] = currVert;
-						++currVert;
-						++triPos;
-					}
-				}
-				else {
-					// add first triangle
-					tris[triPos] = currVert;
-					tris[triPos+1] = currVert+1;
-					tris[triPos+2] = currVert+2;
-					currVert += 3;
-					triPos += 3;
-					int stripIterator = 0;
-					for (int j = 3; j < currHeader->count; ++j) {
-						if ((stripIterator & 1) == 0) {
-							tris[triPos] = currVert - 2;
-							tris[triPos + 2] = currVert - 1;
-							tris[triPos + 1] = currVert;
-						}
-						else {
-							tris[triPos + 2] = currVert;
-							tris[triPos + 1] = currVert - 1;
-							tris[triPos] = currVert - 2;
-						}
-
-						triPos += 3;
-						++currVert;
-						++stripIterator;
-					}
-				}
-			}
-			else {
-				if (!(currHeader->bitFlags & VTX_STRIPS)) {
-					int quadTracker = 0;
-					for (int j = 0; j < currHeader->count; ++j) {
-						tris[triPos] = currVert;
-						++currVert;
-						++triPos;
-						++quadTracker;
-						if (quadTracker % 4 == 0) {
-							tris[triPos] = currVert - 4;
-							++triPos;
-							tris[triPos] = currVert - 2;
-							++triPos;
-						}
-					}
-				}
-				else {
-					// create initial quad
-					tris[triPos] = currVert;
-					tris[triPos + 1] = currVert + 1;
-					tris[triPos + 2] = currVert + 2;
-					triPos += 3;
-					currVert += 3;
-					tris[triPos] = currVert - 2;
-					tris[triPos + 1] = currVert;
-					tris[triPos + 2] = currVert - 1;
-					triPos += 3;
-					++currVert;
-					// now, un-stripify
-					for (int j = 4; j < currHeader->count; j += 2) {
-						// create virtual quad
-						int quad[4];
-						quad[0] = currVert - 1;
-						quad[1] = currVert - 2;
-						quad[2] = currVert + 1;
-						quad[3] = currVert;
-						currVert += 2;
-						// create two triangles from quads
-						tris[triPos] = quad[2];
-						tris[triPos + 1] = quad[1];
-						tris[triPos + 2] = quad[0];
-						triPos += 3;
-						tris[triPos] = quad[1];
-						tris[triPos + 1] = quad[2];
-						tris[triPos + 2] = quad[3];
-						triPos += 3;
-					}
-				}
-			}
-			currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
-			++i;
-		}
-		SetSubmeshTriangles(nativeModel, subMeshId, tris, triCount);
-		free(tris);
-		++subMeshId;
-		--i;
-	}
-	UpdateMesh(nativeModel);
-	retValue->NativeModel = nativeModel;
-
-	// adjust default scale/offset
-	retValue->defaultOffset.x = Fixed32ToNative(*(int*)&retValue->defaultOffset.x);
-	retValue->defaultOffset.y = Fixed32ToNative(*(int*)&retValue->defaultOffset.y);
-	retValue->defaultOffset.z = Fixed32ToNative(*(int*)&retValue->defaultOffset.z);
-	retValue->defaultScale = Fixed32ToNative(*(int*)&retValue->defaultScale);
-
-	retValue->boundsMax.x = Fixed32ToNative(*(int*)&retValue->boundsMax.x);
-	retValue->boundsMax.y = Fixed32ToNative(*(int*)&retValue->boundsMax.y);
-	retValue->boundsMax.z = Fixed32ToNative(*(int*)&retValue->boundsMax.z);
-	retValue->boundsMin.x = Fixed32ToNative(*(int*)&retValue->boundsMin.x);
-	retValue->boundsMin.y = Fixed32ToNative(*(int*)&retValue->boundsMin.y);
-	retValue->boundsMin.z = Fixed32ToNative(*(int*)&retValue->boundsMin.z);
+	UpdateModel(model);
 
 #endif
 }
@@ -953,15 +684,15 @@ void UpdateModel(Model* model) {
 	}
 
 	// copy verts
-	Vec3* nativeVerts = malloc(sizeof(Vec3) * vertCount);
+	Vec3f* nativeVerts = (Vec3f*)malloc(sizeof(Vec3f) * vertCount);
 	int currVert = 0;
 	currHeader = model->vertexGroups;
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
 		Vertex* verts = (Vertex*)&currHeader->vertices;
 		for (int j = 0; j < currHeader->count; ++j) {
-			nativeVerts[currVert].x = Fixed32ToNative(verts[j].x);
-			nativeVerts[currVert].y = Fixed32ToNative(verts[j].y);
-			nativeVerts[currVert].z = Fixed32ToNative(verts[j].z);
+			nativeVerts[currVert].x = f32tofloat(verts[j].x);
+			nativeVerts[currVert].y = f32tofloat(verts[j].y);
+			nativeVerts[currVert].z = f32tofloat(verts[j].z);
 			++currVert;
 		}
 		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
@@ -971,21 +702,14 @@ void UpdateModel(Model* model) {
 
 	currVert = 0;
 	// this is where it gets tricky...UVs...
-	Vec2* nativeUVs = malloc(sizeof(Vec2) * vertCount);
+	Vec2f* nativeUVs = (Vec2f*)malloc(sizeof(Vec2f) * vertCount);
 	// let's just assume, for now, that UVs are typically stored relative to the texture as expected
 	currHeader = model->vertexGroups;
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
-		float UDivider = 1.0f;
-		float VDivider = 1.0f;
-		// adjust UVs from pixel scale to 0-1
-		if (model->defaultMats[currHeader->material].texture != NULL) {
-			UDivider = Pow(2, model->defaultMats[currHeader->material].texture->width + 3);
-			VDivider = Pow(2, model->defaultMats[currHeader->material].texture->height + 3);
-		}
 		Vertex* verts = (Vertex*)&currHeader->vertices;
 		for (int j = 0; j < currHeader->count; ++j) {
-			nativeUVs[currVert].x = (verts[j].u / 16.0f) / UDivider;
-			nativeUVs[currVert].y = (verts[j].v / 16.0f) / VDivider;
+			nativeUVs[currVert].x = verts[j].u / 16.0f;
+			nativeUVs[currVert].y = verts[j].v / 16.0f;
 			++currVert;
 		}
 		currHeader = (VertexHeader*)((uint32_t)(&(currHeader->vertices)) + (uint32_t)(sizeof(Vertex) * (currHeader->count)));
@@ -994,7 +718,7 @@ void UpdateModel(Model* model) {
 	free(nativeUVs);
 
 	// normals
-	Vec3* nativeNormals = (Vec3*)malloc(sizeof(Vec3) * vertCount);
+	Vec3f* nativeNormals = (Vec3f*)malloc(sizeof(Vec3f) * vertCount);
 	currVert = 0;
 	currHeader = model->vertexGroups;
 	for (int i = 0; i < model->vertexGroupCount; ++i) {
@@ -1208,9 +932,9 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 		MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
 		CombineMatrices(&scaleMatrix, &rotationMatrix, &workMatrix);
 		MatrixToDSMatrix(&workMatrix, &matrix);
-		matrix->m[3] = position->x;
-		matrix->m[7] = position->y;
-		matrix->m[11] = position->z;
+		matrix.m[3] = position->x;
+		matrix.m[7] = position->y;
+		matrix.m[11] = position->z;
 	}
 	if (model->NativeModel == NULL) {
 		int currBone = -1;
@@ -1647,8 +1371,8 @@ void UploadTexture(Texture* input) {
 		paletteSize = 0;
 		break;
 	}
-	int width = Pow(2, input->width + 3);
-	int height = Pow(2, input->height + 3);
+	int width = 1 << (input->width + 3);
+	int height = 1 << (input->height + 3);
 	NativeTexture* nativeTexture = (NativeTexture*)malloc(sizeof(NativeTexture));
 	InitializeTexture(nativeTexture);
 	// convert paletttes to RGBA
@@ -1750,6 +1474,13 @@ Texture* LoadTexture(char* input, bool upload) {
 	return newTex;
 }
 
+void PCRenderNormalize(Vec3f* in, Vec3f* out) {
+	float magnitude = sqrtf((in->x * in->x) + (in->y * in->y) + (in->z * in->z));
+	out->x = in->x / magnitude;
+	out->y = in->y / magnitude;
+	out->z = in->z / magnitude;
+}
+
 void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats) {
 	if (mats == NULL) {
 		mats = model->defaultMats;
@@ -1771,32 +1502,39 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 	SetMaterialShader(&renderMat, defaultShader);
 	m4x4* matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &MVP, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "MVP", matMatrix);
 
 
 	// also account for M
 	matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &matrix, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "M", matMatrix);
 
 
 	// lighting
-	Vec3 *lightDir = (Vec3*)malloc(sizeof(Vec3));
-	lightDir->x = -nativeLightNormal.x;
-	lightDir->y = -nativeLightNormal.y;
-	lightDir->z = -nativeLightNormal.z;
+	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
+	lightDir->x = -f32tofloat(nativeLightNormal.x);
+	lightDir->y = -f32tofloat(nativeLightNormal.y);
+	lightDir->z = -f32tofloat(nativeLightNormal.z);
+	PCRenderNormalize(lightDir, lightDir);
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3 *lightCol = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
 	lightCol->x = (lightColor & 0x1F) / 31.0f;
 	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
 	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
-	Normalize(lightDir, lightDir);
-
 
 	// ambient
-	Vec3* ambient = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
 	ambient->x = (ambientColor & 0x1F) / 31.0f;
 	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
 	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
@@ -1824,7 +1562,7 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 				SetMaterialNativeTexture(&renderMat, "mainTexture", mats[i].texture->nativeTexture);
 			}
 			// set up diffuse color
-			Vec4* diffColor = (Vec4*)malloc(sizeof(Vec4));
+			Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
 			diffColor->x = (*(int*)&mats[i].color.x) / 31.0f;
 			diffColor->y = (*(int*)&mats[i].color.y) / 31.0f;
 			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
@@ -1865,32 +1603,39 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 	SetMaterialShader(&renderMat, defaultRiggedShader);
 	m4x4* matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &MVP, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "MVP", matMatrix);
 
 
 	// also account for M
 	matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &matrix, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "M", matMatrix);
 
 
 	// lighting
-	Vec3* lightDir = (Vec3*)malloc(sizeof(Vec3));
-	lightDir->x = -nativeLightNormal.x;
-	lightDir->y = -nativeLightNormal.y;
-	lightDir->z = -nativeLightNormal.z;
+	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
+	lightDir->x = -f32tofloat(nativeLightNormal.x);
+	lightDir->y = -f32tofloat(nativeLightNormal.y);
+	lightDir->z = -f32tofloat(nativeLightNormal.z);
+	PCRenderNormalize(lightDir, lightDir);
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3* lightCol = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
 	lightCol->x = (lightColor & 0x1F) / 31.0f;
 	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
 	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
-	Normalize(lightDir, lightDir);
-
 
 	// ambient
-	Vec3* ambient = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
 	ambient->x = (ambientColor & 0x1F) / 31.0f;
 	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
 	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
@@ -1910,7 +1655,7 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 			for (int j = 0; j < 16; ++j) {
 				workMatrix.m[j] = 0;
 				if (j % 5 == 0) {
-					workMatrix.m[j] = 1.0f;
+					workMatrix.m[j] = 4096;
 				}
 			}
 			// set up parent stack
@@ -1931,6 +1676,12 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 		}
 		//memcpy(&boneMatrices[i], &model->skeleton[i].inverseMatrix, sizeof(m4x4));
 		//CombineMatrices(&animator->items[i].matrix, &model->skeleton[i].inverseMatrix, &boneMatrices[i]);
+	}
+	for (int i = 0; i < animator->itemCount; ++i) {
+		// convert to float...
+		for (int j = 0; j < 16; ++j) {
+			boneMatrices[i].mf[j] = f32tofloat(boneMatrices[i].m[j]);
+		}
 	}
 	SetMaterialUniform(&renderMat, "boneMatrices", boneMatrices);
 
@@ -1955,7 +1706,7 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 				SetMaterialNativeTexture(&renderMat, "mainTexture", mats[i].texture->nativeTexture);
 			}
 			// set up diffuse color
-			Vec4* diffColor = (Vec4*)malloc(sizeof(Vec4));
+			Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
 			diffColor->x = (*(int*)&mats[i].color.x) / 31.0f;
 			diffColor->y = (*(int*)&mats[i].color.y) / 31.0f;
 			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
@@ -1983,32 +1734,39 @@ void RenderModelTransparent(ModelDrawCall* call) {
 	}
 	m4x4* matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &MVP, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "MVP", matMatrix);
 
 
 	// also account for M
 	matMatrix = (m4x4*)malloc(sizeof(m4x4));
 	memcpy(matMatrix, &call->matrix, sizeof(m4x4));
+	// convert to float...
+	for (int i = 0; i < 16; ++i) {
+		matMatrix->mf[i] = f32tofloat(matMatrix->m[i]);
+	}
 	SetMaterialUniform(&renderMat, "M", matMatrix);
 
 
 	// lighting
-	Vec3* lightDir = (Vec3*)malloc(sizeof(Vec3));
-	lightDir->x = -nativeLightNormal.x;
-	lightDir->y = -nativeLightNormal.y;
-	lightDir->z = -nativeLightNormal.z;
+	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
+	lightDir->x = -f32tofloat(nativeLightNormal.x);
+	lightDir->y = -f32tofloat(nativeLightNormal.y);
+	lightDir->z = -f32tofloat(nativeLightNormal.z);
+	PCRenderNormalize(lightDir, lightDir);
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3* lightCol = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
 	lightCol->x = (lightColor & 0x1F) / 31.0f;
 	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
 	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
-	Normalize(lightDir, lightDir);
-
 
 	// ambient
-	Vec3* ambient = (Vec3*)malloc(sizeof(Vec3));
+	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
 	ambient->x = (ambientColor & 0x1F) / 31.0f;
 	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
 	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
@@ -2029,7 +1787,7 @@ void RenderModelTransparent(ModelDrawCall* call) {
 				for (int j = 0; j < 16; ++j) {
 					workMatrix.m[j] = 0;
 					if (j % 5 == 0) {
-						workMatrix.m[j] = 1.0f;
+						workMatrix.m[j] = 4096;
 					}
 				}
 				// set up parent stack
@@ -2051,6 +1809,12 @@ void RenderModelTransparent(ModelDrawCall* call) {
 			//memcpy(&boneMatrices[i], &model->skeleton[i].inverseMatrix, sizeof(m4x4));
 			//CombineMatrices(&animator->items[i].matrix, &model->skeleton[i].inverseMatrix, &boneMatrices[i]);
 		}
+		for (int i = 0; i < call->animator->itemCount; ++i) {
+			// convert to float...
+			for (int j = 0; j < 16; ++j) {
+				boneMatrices[i].mf[j] = f32tofloat(boneMatrices[i].m[j]);
+			}
+		}
 		SetMaterialUniform(&renderMat, "boneMatrices", boneMatrices);
 	}
 
@@ -2058,7 +1822,7 @@ void RenderModelTransparent(ModelDrawCall* call) {
 		SetMaterialNativeTexture(&renderMat, "mainTexture", call->subMat.texture->nativeTexture);
 	}
 	// set up diffuse color
-	Vec4* diffColor = (Vec4*)malloc(sizeof(Vec4));
+	Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
 	diffColor->x = (*(int*)&call->subMat.color.x) / 31.0f;
 	diffColor->y = (*(int*)&call->subMat.color.y) / 31.0f;
 	diffColor->z = (*(int*)&call->subMat.color.z) / 31.0f;
@@ -2124,18 +1888,6 @@ void LoadAnimationFromRAM(Animation* anim) {
 	for (int i = 0; i < anim->keyframeSetCount; ++i) {
 		anim->sets[i] = (KeyframeSet*)((uint32_t)anim->sets[i] + (uint32_t)anim);
 	}
-#ifdef _NOTDS
-	for (int i = 0; i < anim->keyframeSetCount; ++i) {
-		for (int j = 0; j < anim->sets[i]->keyframeCount; ++j) {
-			anim->sets[i]->keyframes[j].data.rotation.x = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.x);
-			anim->sets[i]->keyframes[j].data.rotation.y = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.y);
-			anim->sets[i]->keyframes[j].data.rotation.z = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.z);
-			anim->sets[i]->keyframes[j].data.rotation.w = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].data.rotation.w);
-			anim->sets[i]->keyframes[j].frame = Fixed32ToNative(*(int*)&anim->sets[i]->keyframes[j].frame);
-		}
-	}
-	anim->lastFrame = Fixed32ToNative(*(int*)&anim->lastFrame);
-#endif
 }
 
 Animation *LoadAnimation(char *input) {
@@ -2194,7 +1946,7 @@ int LoadAnimationAsync(char* input, void (*callBack)(void* data, Animation* anim
 
 Animator *CreateAnimator(Model *referenceModel) {
 	Animator *retValue = malloc(sizeof(Animator));
-	retValue->speed = Fixed32ToNative(4096);
+	retValue->speed = 4096;
 	retValue->items = malloc(sizeof(AnimatorItem)*referenceModel->skeletonCount);
 	retValue->itemCount = referenceModel->skeletonCount;
 	retValue->currFrame = 0;
@@ -2309,14 +2061,17 @@ void UpdateAnimator(Animator *animator, Model *referenceModel) {
 	}
 	
 	// matrix time
-	f32 prevLerpAmnt = divf32(animator->lerpPrevTime, animator->lerpPrevTimeTarget);
+	f32 prevLerpAmnt;
 	if (animator->lerpPrevTimeTarget == 0) {
-		prevLerpAmnt = Fixed32ToNative(4096);
+		prevLerpAmnt = 4096;
+	}
+	else {
+		prevLerpAmnt = divf32(animator->lerpPrevTime, animator->lerpPrevTimeTarget);
 	}
 	if (prevLerpAmnt < 0) {
-		prevLerpAmnt = Fixed32ToNative(4096);
+		prevLerpAmnt = 4096;
 	}
-	if (prevLerpAmnt >= Fixed32ToNative(4096)) {
+	if (prevLerpAmnt >= 4096) {
 		for (int i = 0; i < animator->itemCount; ++i) {
 			AnimatorItem *currItem = &animator->items[i];
 			// i choose...optimization, here.
@@ -2994,11 +2749,11 @@ void SetupCameraMatrix() {
 
 void SetupCameraMatrix() {
 	m4x4 perspectiveMatrix;
-	MakePerspectiveMatrix(cameraFOV, divf32(Fixed32ToNative(GetWindowWidth() * 4096), Fixed32ToNative(GetWindowHeight() * 4096)), cameraNear, cameraFar, &perspectiveMatrix);
+	MakePerspectiveMatrix(cameraFOV, divf32(GetWindowWidth() * 4096, GetWindowHeight() * 4096), cameraNear, cameraFar, &perspectiveMatrix);
 #ifdef FLIP_X
 	m4x4 tmpMat;
 	m4x4 workMat;
-	MakeScaleMatrix(Fixed32ToNative(-4096), Fixed32ToNative(4096), Fixed32ToNative(4096), &tmpMat);
+	MakeScaleMatrix(-4096, 4096, 4096, &tmpMat);
 	CombineMatricesFull(&tmpMat, &perspectiveMatrix, &workMat);
 	memcpy(&perspectiveMatrix, &workMat, sizeof(m4x4));
 #endif
@@ -3023,7 +2778,7 @@ void SetupCameraMatrix() {
 
 #ifdef _NOTDS
 f32 DotProduct4(Vec4* left, Vec4* right) {
-	return (left->x * right->x) + (left->y * right->y) + (left->z * right->z) + (left->w * right->w);
+	return (f32tofloat(left->x) * f32tofloat(right->x)) + (f32tofloat(left->y) * f32tofloat(right->y)) + (f32tofloat(left->z) * f32tofloat(right->z)) + (f32tofloat(left->w) * f32tofloat(right->w));
 }
 #endif
 
@@ -3034,14 +2789,14 @@ bool AABBInCamera(Vec3* min, Vec3* max, m4x4* transform) {
 	MatrixTimesVec3(transform, min, &newMin);
 	MatrixTimesVec3(transform, max, &newMax);
 	const Vec4* planes = frustum.planes;
-	Vec4 v1 = { newMin.x, newMin.y, newMin.z, 1.0f };
-	Vec4 v2 = { newMax.x,  newMin.y, newMin.z, 1.0f };
-	Vec4 v3 = { newMin.x,  newMax.y, newMin.z, 1.0f };
-	Vec4 v4 = { newMax.x,  newMax.y, newMin.z, 1.0f };
-	Vec4 v5 = { newMin.x,  newMin.y, newMax.z, 1.0f };
-	Vec4 v6 = { newMax.x,  newMin.y, newMax.z, 1.0f };
-	Vec4 v7 = { newMin.x,  newMax.y, newMax.z, 1.0f };
-	Vec4 v8 = { newMax.x,  newMax.y, newMax.z, 1.0f };
+	Vec4 v1 = { newMin.x, newMin.y, newMin.z, 4096 };
+	Vec4 v2 = { newMax.x,  newMin.y, newMin.z, 4096 };
+	Vec4 v3 = { newMin.x,  newMax.y, newMin.z, 4096 };
+	Vec4 v4 = { newMax.x,  newMax.y, newMin.z, 4096 };
+	Vec4 v5 = { newMin.x,  newMin.y, newMax.z, 4096 };
+	Vec4 v6 = { newMax.x,  newMin.y, newMax.z, 4096 };
+	Vec4 v7 = { newMin.x,  newMax.y, newMax.z, 4096 };
+	Vec4 v8 = { newMax.x,  newMax.y, newMax.z, 4096 };
 
 	for (int i = 0; i < 6; ++i)
 	{

@@ -13,33 +13,7 @@ float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 	return x1 * x2 + y1 * y2 + z1 * z2;
 }
 
-#ifndef _NOTDS
-long long dot64(Vec3* left, Vec3* right) {
-	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
-	long long work = ((long long)left->x * (long long)right->x);
-	long long work2 = ((long long)left->y * (long long)right->y);
-	long long work3 = ((long long)left->z * (long long)right->z);
-	return work + work2 + work3;
-}
-
-long long mulf64(long long left, long long right) {
-	return (left * right) >> 24;
-}
-
-long long divf64(long long left, long long right) {
-	REG_DIVCNT = DIV_64_64;
-
-	while (REG_DIVCNT & DIV_BUSY);
-
-	// really hope this still works
-	REG_DIV_NUMER = left << 12;
-	REG_DIV_DENOM = right;
-
-	while (REG_DIVCNT & DIV_BUSY);
-
-	return (REG_DIV_RESULT);
-}
-#elif defined(BARY64_DEBUG)
+#if defined(BARY64_DEBUG)
 // debug functions
 long long dot64(Vec3* left, Vec3* right) {
 	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
@@ -55,6 +29,36 @@ long long mulf64(long long left, long long right) {
 
 long long divf64(long long left, long long right) {
 	return (left << 12) / right;
+}
+#else
+long long dot64(Vec3* left, Vec3* right) {
+	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
+	long long work = ((long long)left->x * (long long)right->x);
+	long long work2 = ((long long)left->y * (long long)right->y);
+	long long work3 = ((long long)left->z * (long long)right->z);
+	return work + work2 + work3;
+}
+
+long long mulf64(long long left, long long right) {
+	return (left * right) >> 24;
+}
+
+long long divf64(long long left, long long right) {
+#ifndef _NOTDS
+	REG_DIVCNT = DIV_64_64;
+
+	while (REG_DIVCNT & DIV_BUSY);
+
+	// really hope this still works
+	REG_DIV_NUMER = left << 12;
+	REG_DIV_DENOM = right;
+
+	while (REG_DIVCNT & DIV_BUSY);
+
+	return (REG_DIV_RESULT);
+#else
+	return (left << 12) / right;
+#endif
 }
 #endif
 
@@ -83,10 +87,10 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 retValue;
 	retValue.x = floattof32((d11 * d20 - d01 * d21) / denom);
 	retValue.y = floattof32((d00 * d21 - d01 * d20) / denom);
-	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
+	retValue.z = 4096 - retValue.x - retValue.y;
 	return retValue;
 	#else
-#if defined(BARY64) && !defined(_NOTDS)
+#if defined(BARY64)
 	long long d00 = dot64(&v0, &v0);
 	long long d01 = dot64(&v0, &v1);
 	long long d11 = dot64(&v1, &v1);
@@ -96,7 +100,7 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 retValue;
 	retValue.x = divf64(mulf64(d11, d20) - mulf64(d01, d21), denom);
 	retValue.y = divf64(mulf64(d00, d21) - mulf64(d01, d20), denom);
-	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
+	retValue.z = 4096 - retValue.x - retValue.y;
 	return retValue;
 #elif defined (BARY64_DEBUG)
 	long long d00 = dot64(&v0, &v0);
@@ -108,7 +112,7 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 retValue;
 	retValue.x = divf64(mulf64(d11, d20) - mulf64(d01, d21), denom) / 4096.0f;
 	retValue.y = divf64(mulf64(d00, d21) - mulf64(d01, d20), denom) / 4096.0f;;
-	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
+	retValue.z = 4096 - retValue.x - retValue.y;
 	return retValue;
 #else
 	f32 d00 = DotProduct(&v0, &v0);
@@ -120,7 +124,7 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 retValue;
 	retValue.x = divf32(mulf32(d11, d20) - mulf32(d01, d21), denom);
 	retValue.y = divf32(mulf32(d00, d21) - mulf32(d01, d20), denom);
-	retValue.z = Fixed32ToNative(4096) - retValue.x - retValue.y;
+	retValue.z = 4096 - retValue.x - retValue.y;
 	
 	return retValue;
 #endif
@@ -174,7 +178,7 @@ bool SphereOnLine(CollisionSphere *sphere, Vec3 *p1, Vec3 *p2, Vec3 *closestPoin
 	// this saves us 1 (one) sqrt call for magLine. worth, I think.
 	magPoint1 = mulf32(magPoint1, magPoint1);
 	// add a little leniency for, uh...lack of precision
-	if (magPoint1 <= magLine + Fixed32ToNative(32) && magPoint1 >= magLine - Fixed32ToNative(32)) {
+	if (magPoint1 <= magLine + 32 && magPoint1 >= magLine - 32) {
 		return true;
 	}
 	
@@ -214,11 +218,9 @@ bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec
 	return false;
 }
 
-#ifndef _NOTDS
 long long dot64_2(long long x1, long long y1, long long z1, long long x2, long long y2, long long z2) {
 	return mulf64(x1, x2) + mulf64(y1, y2) + mulf64(z1, z2);
 }
-#endif
 
 bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane) {
 	// adjust sphere so triangle is origin
@@ -246,9 +248,9 @@ bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3
 	Vec3 barycentric = BarycentricCoords(tri, &spotOnPlane);
 	*onPlane = true;
 	// if any are < 0 or > 1, no collision here. if all arent, then yes collision. also add some leniency
-	if (barycentric.x >= -Fixed32ToNative(0) && barycentric.x <= Fixed32ToNative(4096)
-	&& barycentric.y >= -Fixed32ToNative(0) && barycentric.y <= Fixed32ToNative(4096)
-	&& barycentric.z >= -Fixed32ToNative(0) && barycentric.z <= Fixed32ToNative(4096)) {
+	if (barycentric.x >= 0 && barycentric.x <= 4096
+	&& barycentric.y >= 0 && barycentric.y <= 4096
+	&& barycentric.z >= 0 && barycentric.z <= 4096) {
 		normal->x = tri->normal.x;
 		normal->y = tri->normal.y;
 		normal->z = tri->normal.z;
@@ -348,12 +350,8 @@ void GenerateOctree(CollisionBlock *currBlock, MeshCollider *currMesh, int currD
 	currBlock->triangleList = (unsigned short*)malloc(sizeof(unsigned short) * maxTris);
 	// iterate over all the collision triangles in the mesh and see if they fall within the block
 	for (int i = 0; i < currMesh->triCount; ++i) {
-#ifdef _NOTDS
-		if (AABBCheck(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax)) {
-#else
 		// fixes occasionally broken faces on DS
 		if (AABBCheckLeniency(&currBlock->boundsMin, &currBlock->boundsMax, &currMesh->triangles[i].boundsMin, &currMesh->triangles[i].boundsMax, 1)) {
-#endif
 			currBlock->triangleList[currBlock->triCount] = i;
 			++currBlock->triCount;
 			// max tris, either start a new subdivision or increase tri count
@@ -598,21 +596,6 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 		}
 		currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 	}
-#ifdef _NOTDS
-	for (int i = 0; i < retValue->triCount; ++i) {
-		for (int j = 0; j < 3; ++j) {
-			retValue->triangles[i].verts[j].x = Fixed32ToNative(retValue->triangles[i].verts[j].x);
-			retValue->triangles[i].verts[j].y = Fixed32ToNative(retValue->triangles[i].verts[j].y);
-			retValue->triangles[i].verts[j].z = Fixed32ToNative(retValue->triangles[i].verts[j].z);
-		}
-		retValue->triangles[i].boundsMax.x = Fixed32ToNative(retValue->triangles[i].boundsMax.x);
-		retValue->triangles[i].boundsMax.y = Fixed32ToNative(retValue->triangles[i].boundsMax.y);
-		retValue->triangles[i].boundsMax.z = Fixed32ToNative(retValue->triangles[i].boundsMax.z);
-		retValue->triangles[i].boundsMin.x = Fixed32ToNative(retValue->triangles[i].boundsMin.x);
-		retValue->triangles[i].boundsMin.y = Fixed32ToNative(retValue->triangles[i].boundsMin.y);
-		retValue->triangles[i].boundsMin.z = Fixed32ToNative(retValue->triangles[i].boundsMin.z);
-	}
-#endif
 
 	Vec3 AABBMin;
 	Vec3Subtraction(&retValue->AABBPosition, &retValue->AABBBounds, &AABBMin);
@@ -707,48 +690,14 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	Vec3 newDir = *direction;
 	// division by 0 fix
 	if (newDir.x == 0) {
-		newDir.x = Fixed32ToNative(1);
+		newDir.x = 1;
 	}
 	if (newDir.y == 0) {
-		newDir.y = Fixed32ToNative(1);
+		newDir.y = 1;
 	}
 	if (newDir.z == 0) {
-		newDir.z = Fixed32ToNative(1);
+		newDir.z = 1;
 	}
-#ifdef _NOTDS
-	Vec3Subtraction(boxMin, point, &workVec);
-	Vec3Division(&workVec, &newDir, &tMin);
-	Vec3Subtraction(boxMax, point, &workVec);
-	Vec3Division(&workVec, &newDir, &tMax);
-	Vec3 t1 = { Min(tMin.x, tMax.x), Min(tMin.y, tMax.y), Min(tMin.z, tMax.z) };
-	Vec3 t2 = { Max(tMin.x, tMax.x), Max(tMin.y, tMax.y), Max(tMin.z, tMax.z) };
-	f32 tNear = Max(t1.x, Max(t1.y, t1.z));
-	f32 tFar = Min(t2.x, Min(t2.y, t2.z));
-	f32 dist;
-	if (tNear < 0) {
-		dist = tFar;
-	}
-	else {
-		dist = tNear;
-	}
-	if (t != NULL) {
-		*t = dist;
-	}
-	// find normal
-	if (normal != NULL) {
-		f32 tSeries[] = { tMin.x, tMax.x, tMin.y, tMax.y, tMin.z, tMax.z };
-		Vec3 normals[] = { {Fixed32ToNative(-4096), 0, 0 }, {Fixed32ToNative(4096), 0, 0},
-			{0, Fixed32ToNative(-4096), 0}, {0, Fixed32ToNative(4096), 0},
-			{0, 0, Fixed32ToNative(-4096)}, {0, 0, Fixed32ToNative(4096)} };
-		for (int i = 0; i < 6; ++i) {
-			if (dist == tSeries[i]) {
-				*normal = normals[i];
-				break;
-			}
-		}
-	}
-	return tNear <= tFar && tFar >= 0;
-#else
 	long long tMin1, tMin2, tMin3;
 	long long tMax1, tMax2, tMax3;
 	Vec3Subtraction(boxMin, point, &workVec);
@@ -801,9 +750,9 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	// return normal as well
 	if (normal != NULL) {
 		f32 tSeries[] = { tMin1, tMax1, tMin2, tMax2, tMin3, tMax3 };
-		Vec3 normals[] = { {Fixed32ToNative(-4096), 0, 0 }, {Fixed32ToNative(4096), 0, 0},
-			{0, Fixed32ToNative(-4096), 0}, {0, Fixed32ToNative(4096), 0},
-			{0, 0, Fixed32ToNative(-4096)}, {0, 0, Fixed32ToNative(4096)} };
+		Vec3 normals[] = { {-4096, 0, 0 }, {4096, 0, 0},
+			{0, -4096, 0}, {0, 4096, 0},
+			{0, 0, -4096}, {0, 0, 4096} };
 		for (int i = 0; i < 6; ++i) {
 			if (dist == tSeries[i]) {
 				*normal = normals[i];
@@ -813,7 +762,6 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	}
 
 	return tNear <= tFar && tFar >= 0;
-#endif
 }
 
 bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere, f32* t, Vec3* hitPos) {
@@ -873,9 +821,9 @@ bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f3
 	}
 	if (RayOnPlane(point, direction, &triangle->normal, DotProduct(&triangle->normal, &triangle->verts[0]), t, hitPos)) {
 		Vec3 barycentric = BarycentricCoords(triangle, hitPos);
-		if (barycentric.x >= -Fixed32ToNative(0) && barycentric.x <= Fixed32ToNative(4096)
-			&& barycentric.y >= -Fixed32ToNative(0) && barycentric.y <= Fixed32ToNative(4096)
-			&& barycentric.z >= -Fixed32ToNative(0) && barycentric.z <= Fixed32ToNative(4096)) {
+		if (barycentric.x >= 0 && barycentric.x <= 4096
+			&& barycentric.y >= 0 && barycentric.y <= 4096
+			&& barycentric.z >= 0 && barycentric.z <= 4096) {
 			return true;
 		}
 	}
@@ -1032,7 +980,7 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 	// all blocks hit, now create a list of triangles, omitting duplicates
 	int* trisToCheck = (int*)malloc(sizeof(int) * triCount);
 	int realTriCount = 0;
-	f32 closestHit = Fixed32ToNative(2147483647);
+	f32 closestHit = 2147483647;
 	int closestTri;
 	bool everHit = false;
 	for (int i = 0; i < hitBlockPosition; ++i) {
@@ -1134,38 +1082,38 @@ bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3*
 
 	if (sqrDist <= mulf32(sphere->radius, sphere->radius)) {
 		*hitPos = closestPoint;
-		if (sqrDist <= Fixed32ToNative(1)) {
+		if (sqrDist <= 1) {
 			// we're INSIDE the cube, fix!
 			Normalize(&rotatedSpherePoint, normal);
 
 			// gross i know but nothing better came to me
 			// 2867 = 0.7f
-			const f32 normalCheck = Fixed32ToNative(2867);
+			const f32 normalCheck = 2867;
 			if (normal->y >= normalCheck) {
 				normal->x = 0;
-				normal->y = Fixed32ToNative(4096);
+				normal->y = 4096;
 				normal->z = 0;
 			} else if (normal->y <= -normalCheck) {
 				normal->x = 0;
-				normal->y = Fixed32ToNative(-4096);
+				normal->y = -4096;
 				normal->z = 0;
 			} else if (normal->x >= normalCheck) {
-				normal->x = Fixed32ToNative(4096);
+				normal->x = 4096;
 				normal->y = 0;
 				normal->z = 0;
 			} else if (normal->x <= -normalCheck) {
 				normal->y = 0;
-				normal->x = Fixed32ToNative(-4096);
+				normal->x = -4096;
 				normal->z = 0;
 			} else if (normal->z >= normalCheck) {
 				normal->x = 0;
-				normal->z = Fixed32ToNative(4096);
+				normal->z = 4096;
 				normal->y = 0;
 			}
 			else {
 				normal->x = 0;
 				normal->y = 0;
-				normal->z = Fixed32ToNative(-4096);
+				normal->z = -4096;
 			}
 			// this also sucks
 			*t = sphere->radius + f32abs(DotProduct(normal, &box->extents)) - DotProduct(normal, &rotatedSpherePoint);

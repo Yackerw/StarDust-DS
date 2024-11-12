@@ -50,8 +50,8 @@ void UpdateDeltaTime() {
 	QueryPerformanceCounter(&delta);
 	unsigned long long newDelta = delta.QuadPart - prevDelta.QuadPart;
 	prevDelta = delta;
-	deltaTime = newDelta / deltaFrequencyFloat;
-	deltaTime = Min(deltaTime, 0.1f);
+	deltaTime = (newDelta / deltaFrequencyFloat) * 4096;
+	deltaTime = Min(deltaTime, 490);
 }
 
 void StartBenchmark() {

@@ -5,13 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-// used internally for one function lmao
-typedef struct {
-	float x;
-	float y;
-	float z;
-} Vec3f;
-
 #define r1x 0
 #define r1y 1
 #define r1z 2
@@ -36,10 +29,10 @@ typedef struct {
 
 void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	ZeroMatrix(retValue);
-	retValue->m[r1x] = Fixed32ToNative(4096);
-	retValue->m[r2y] = Fixed32ToNative(4096);
-	retValue->m[r3z] = Fixed32ToNative(4096);
-	retValue->m[r4w] = Fixed32ToNative(4096);
+	retValue->m[r1x] = 4096;
+	retValue->m[r2y] = 4096;
+	retValue->m[r3z] = 4096;
+	retValue->m[r4w] = 4096;
 	retValue->m[r1w] = x;
 	retValue->m[r2w] = y;
 	retValue->m[r3w] = z;
@@ -50,7 +43,7 @@ void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	retValue->m[r1x] = x;
 	retValue->m[r2y] = y;
 	retValue->m[r3z] = z;
-	retValue->m[r4w] = Fixed32ToNative(4096);
+	retValue->m[r4w] = 4096;
 }
 
 void Combine3x3Matrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
@@ -72,7 +65,7 @@ void Combine3x3Matrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 	retValue->m[12] = 0;
 	retValue->m[13] = 0;
 	retValue->m[14] = 0;
-	retValue->m[15] = Fixed32ToNative(4096);
+	retValue->m[15] = 4096;
 }
 
 // this function is HYPER optimized, and excludes row 4. consider it a 4x3 matrix instead
@@ -108,7 +101,7 @@ void CombineMatrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 	retValue->m[12] = 0;
 	retValue->m[13] = 0;
 	retValue->m[14] = 0;
-	retValue->m[15] = Fixed32ToNative(4096);
+	retValue->m[15] = 4096;
 }
 
 void CombineMatricesFull(m4x4* left, m4x4* right, m4x4* retValue) {
@@ -170,17 +163,17 @@ void MakeRotationMatrix(Quaternion *input, m4x4 *retValue) {
 	f32 wy = mulf32(input->w, input->y);
 	f32 wz = mulf32(input->w, input->z);
 	// oh god i have no idea what any of this means
-	retValue->m[r1x] = 2 * (ww + mulf32(input->x, input->x)) - Fixed32ToNative(4096);
+	retValue->m[r1x] = 2 * (ww + mulf32(input->x, input->x)) - 4096;
 	retValue->m[r1y] = 2 * (xy - wz);
 	retValue->m[r1z] = 2 * (xz + wy);
 	
 	retValue->m[r2x] = 2 * (xy + wz);
-	retValue->m[r2y] = 2 * (ww + mulf32(input->y, input->y)) - Fixed32ToNative(4096);
+	retValue->m[r2y] = 2 * (ww + mulf32(input->y, input->y)) - 4096;
 	retValue->m[r2z] = 2 * (yz - wx);
 	
 	retValue->m[r3x] = 2 * (xz - wy);
 	retValue->m[r3y] = 2 * (yz + wx);
-	retValue->m[r3z] = 2 * (ww + mulf32(input->z, input->z)) - Fixed32ToNative(4096);
+	retValue->m[r3z] = 2 * (ww + mulf32(input->z, input->z)) - 4096;
 	
 	retValue->m[r1w] = 0;
 	retValue->m[r2w] = 0;
@@ -188,7 +181,7 @@ void MakeRotationMatrix(Quaternion *input, m4x4 *retValue) {
 	retValue->m[r4x] = 0;
 	retValue->m[r4y] = 0;
 	retValue->m[r4z] = 0;
-	retValue->m[r4w] = Fixed32ToNative(4096);
+	retValue->m[r4w] = 4096;
 }
 
 void EulerToQuat(f32 x, f32 y, f32 z, Quaternion *q) {
@@ -242,13 +235,8 @@ void QuatNormalizeFast(Quaternion* input) {
 #endif
 }
 
-#ifndef _NOTDS
 #define mulf32fast(a, b) (((a) * (b)) >> 12)
 #define divf32fast(a, b) (((a) << 12) / (b))
-#else
-#define mulf32fast mulf32
-#define divf32fast divf32
-#endif
 
 void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
 	f32 cosOmega = mulf32(left->x, right->x) + mulf32(left->y, right->y) + mulf32(left->z, right->z) + mulf32(left->w, right->w);
@@ -266,35 +254,28 @@ void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
 		usedRight.w = -usedRight.w;
 	}
 	// clamp cosomega to 1.0
-	if (cosOmega > Fixed32ToNative(4096)) {
-		cosOmega = Fixed32ToNative(4096);
+	if (cosOmega > 4096) {
+		cosOmega = 4096;
 	}
 	f32 scaleFrom;
 	f32 scaleTo;
 	// algorithm doesn't work well for extreme values, employ regular lerp
-	if (cosOmega > Fixed32ToNative(4095)) {
-		scaleFrom = Fixed32ToNative(4096) - t;
+	if (cosOmega > 4095) {
+		scaleFrom = 4096 - t;
 		scaleTo = t;
 	} else {
 		// standard slerp
 		f32 omega = acosLerp(cosOmega);
-		f32 sinOmega = sqrtf32(Fixed32ToNative(4096) - mulf32fast(cosOmega, cosOmega));
+		f32 sinOmega = sqrtf32(4096 - mulf32fast(cosOmega, cosOmega));
 		omega = mulf32(omega, RotationToFixedRadians);
 		//mulf32(divf32(omega, 32767), 25735);
-		scaleFrom = divf32fast(sinLerp(mulf32fast(Fixed32ToNative(4096) - t, omega)), sinOmega);
+		scaleFrom = divf32fast(sinLerp(mulf32fast(4096 - t, omega)), sinOmega);
 		scaleTo = divf32fast(sinLerp(mulf32fast(t, omega)), sinOmega);
 	}
-#ifdef _NOTDS
-	out->x = mulf32(scaleFrom, left->x) + mulf32(scaleTo, usedRight.x);
-	out->y = mulf32(scaleFrom, left->y) + mulf32(scaleTo, usedRight.y);
-	out->z = mulf32(scaleFrom, left->z) + mulf32(scaleTo, usedRight.z);
-	out->w = mulf32(scaleFrom, left->w) + mulf32(scaleTo, usedRight.w);
-#else
 	out->x = (scaleFrom * left->x + scaleTo * usedRight.x) >> 12;
 	out->y = (scaleFrom * left->y + scaleTo * usedRight.y) >> 12;
 	out->z = (scaleFrom * left->z + scaleTo * usedRight.z) >> 12;
 	out->w = (scaleFrom * left->w + scaleTo * usedRight.w) >> 12;
-#endif
 	
 	// maybe normalize?
 	QuatNormalizeFast(out);
@@ -351,27 +332,27 @@ void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out) {
 void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
 	f32 dot = DotProduct(v1, v2);
 	Vec3 a;
-	if (dot <= -Fixed32ToNative(4095)) {
+	if (dot <= -4095) {
 		Vec3 tmp;
-		tmp.x = Fixed32ToNative(4096);
+		tmp.x = 4096;
 		tmp.y = 0;
 		tmp.z = 0;
 		CrossProduct(&tmp, v1, &a);
 		if (SqrMagnitude(&a) == 0) {
 			tmp.x = 0;
-			tmp.y = Fixed32ToNative(4096);
+			tmp.y = 4096;
 			CrossProduct(&tmp, v1, &a);
 		}
 		Normalize(&a, &a);
-		QuaternionFromAngleAxis(mulf32(180*Fixed32ToNative(4096), FixedDegreesToRotation), &a, out);
+		QuaternionFromAngleAxis(mulf32(180*4096, FixedDegreesToRotation), &a, out);
 		return;
 	}
-	if (dot >= Fixed32ToNative(4095)) {
+	if (dot >= 4095) {
 		// this is dumb
 		out->x = 0;
 		out->y = 0;
 		out->z = 0;
-		out->w = Fixed32ToNative(4096);
+		out->w = 4096;
 	}
 	
 	CrossProduct(v1, v2, &a);
@@ -427,25 +408,21 @@ extern inline f32 Lerp(f32 left, f32 right, f32 t) {
 
 f32 Atan2(f32 y, f32 x) {
 	// this implementation has issues in floating point for some reason *shrug*
-#ifndef _NOTDS
-	const f32 b = Fixed32ToNative(2442);
+	const f32 b = 2442;
 	// arc tangent in first quadrant
 	f32 bx_a = abs(mulf32(b, mulf32(x, y)));
 	f32 num = bx_a + mulf32(y, y);
 	f32 atan_1q = divf32(num, mulf32(x, x) + bx_a + num);
 	// multiply by half pi
-	atan_1q = mulf32(atan_1q,Fixed32ToNative(6434));
+	atan_1q = mulf32(atan_1q,6434);
 	// now set up the quadrant
 	if (x < 0) {
-		atan_1q = Fixed32ToNative(6434) + (Fixed32ToNative(6434) - atan_1q);
+		atan_1q = 6434 + (6434 - atan_1q);
 	}
 	if (y < 0) {
 		atan_1q = -atan_1q;
 	}
 	return mulf32(atan_1q, FixedRadiansToRotation);
-#else
-	return atan2f(y, x);
-#endif
 }
 
 void Reflect(Vec3 *a, Vec3 *b, Vec3 *out) {
@@ -498,37 +475,37 @@ extern inline f32 DeltaAngle(f32 dir1, f32 dir2)
 {
 	f32 a = dir2 - dir1;
 
-	a += Angle16ToNative(32767)/2;
+	a += 32767/2;
 
 	if (a < 0)
 	{
-		a += Angle16ToNative(32767);
+		a += 32767;
 	}
 
-	if (a > Angle16ToNative(32767))
+	if (a > 32767)
 	{
-		a -= Angle16ToNative(32767);
+		a -= 32767;
 	}
 
-	a -= Angle16ToNative(32767)/2;
+	a -= 32767/2;
 
 	return a;
 }
 
 f32 Pow(f32 value, f32 toPow) {
 	f32 retValue;
-	if (toPow >= Fixed32ToNative(4096)) {
+	if (toPow >= 4096) {
 		retValue = value;
-		toPow -= Fixed32ToNative(4096);
+		toPow -= 4096;
 	} else {
-		retValue = Lerp(Fixed32ToNative(4096), value, toPow);
+		retValue = Lerp(4096, value, toPow);
 	}
-	while (toPow >= Fixed32ToNative(4096)) {
+	while (toPow >= 4096) {
 		retValue = mulf32(retValue, value);
-		toPow -= Fixed32ToNative(4096);
+		toPow -= 4096;
 	}
 	if (toPow > 0) {
-		retValue = mulf32(retValue, Lerp(Fixed32ToNative(4096), value, toPow));
+		retValue = mulf32(retValue, Lerp(4096, value, toPow));
 	}
 	return retValue;
 }
@@ -581,7 +558,7 @@ void FrustumToMatrix(f32 xmin, f32 xmax, f32 ymin, f32 ymax, f32 near, f32 far, 
 	ret->m[11] = -divf32(2 * mulf32(far, near), far - near);
 	ret->m[12] = 0;
 	ret->m[13] = 0;
-	ret->m[14] = -1.0f;
+	ret->m[14] = -4096;
 	ret->m[15] = 0;
 }
 
@@ -598,11 +575,7 @@ void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret) {
 }
 
 extern inline f32 f32Mod(f32 left, f32 right) {
-#ifndef _NOTDS
 	return left % right;
-#else
-	return fmodf(left, right);
-#endif
 }
 
 extern inline void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
@@ -612,11 +585,7 @@ extern inline void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
 }
 
 extern inline f32 f32abs(f32 input) {
-#ifndef _NOTDS
 	return abs(input);
-#else
-	return fabsf(input);
-#endif
 }
 
 void ExtractPlanesFromProj(
@@ -776,25 +745,25 @@ void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut) {
 	m4x4 inverted;
 	InvertMatrix(matrix, &inverted);
 	// we have to generate all the vertices of the matrix for our frustum AABB code...
-	Vec3 workVec = { -Fixed32ToNative(4096), -Fixed32ToNative(4096), -Fixed32ToNative(4096) };
+	Vec3 workVec = { -4096, -4096, -4096 };
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[0]);
-	workVec.z = Fixed32ToNative(4096);
+	workVec.z = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[1]);
-	workVec.z = -Fixed32ToNative(4096);
-	workVec.y = Fixed32ToNative(4096);
+	workVec.z = -4096;
+	workVec.y = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[2]);
-	workVec.z = Fixed32ToNative(4096);
+	workVec.z = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[3]);
-	workVec.y = -Fixed32ToNative(4096);
-	workVec.z = -Fixed32ToNative(4096);
-	workVec.x = Fixed32ToNative(4096);
+	workVec.y = -4096;
+	workVec.z = -4096;
+	workVec.x = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[4]);
-	workVec.z = Fixed32ToNative(4096);
+	workVec.z = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[5]);
-	workVec.z = -Fixed32ToNative(4096);
-	workVec.y = Fixed32ToNative(4096);
+	workVec.z = -4096;
+	workVec.y = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[6]);
-	workVec.z = Fixed32ToNative(4096);
+	workVec.z = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[7]);
 }
 
@@ -805,20 +774,20 @@ int sign(int value) {
 
 void QuaternionToEuler(Quaternion* quaternion, Vec3* euler) {
 	// Roll (x-axis rotation)
-	f32 sinr_cosp = mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->w, quaternion->x) + mulf32(quaternion->y, quaternion->z)));
-	f32 cosr_cosp = Fixed32ToNative(4096) - mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->x, quaternion->x) + mulf32(quaternion->y, quaternion->y)));
+	f32 sinr_cosp = mulf32(2 * 4096, (mulf32(quaternion->w, quaternion->x) + mulf32(quaternion->y, quaternion->z)));
+	f32 cosr_cosp = 4096 - mulf32(2 * 4096, (mulf32(quaternion->x, quaternion->x) + mulf32(quaternion->y, quaternion->y)));
 	euler->x = Atan2(sinr_cosp, cosr_cosp);
 
 	// Pitch (y-axis rotation)
-	f32 sinp = mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->w, quaternion->y) - mulf32(quaternion->z, quaternion->x)));
-	if (f32abs(sinp) >= Fixed32ToNative(4096))
+	f32 sinp = mulf32(2 * 4096, (mulf32(quaternion->w, quaternion->y) - mulf32(quaternion->z, quaternion->x)));
+	if (f32abs(sinp) >= 4096)
 		euler->y = PI / 2 * sign(sinp); // use 90 degrees if out of range
 	else
 		euler->y = asinLerp(sinp);
 
 	// Yaw (z-axis rotation)
-	f32 siny_cosp = mulf32(Fixed32ToNative(4096 * 2), (mulf32(quaternion->w, quaternion->z) + mulf32(quaternion->x, quaternion->y)));
-	f32 cosy_cosp = Fixed32ToNative(4096) - mulf32(Fixed32ToNative(2 * 4096), (mulf32(quaternion->y, quaternion->y) + mulf32(quaternion->z, quaternion->z)));
+	f32 siny_cosp = mulf32(4096 * 2, (mulf32(quaternion->w, quaternion->z) + mulf32(quaternion->x, quaternion->y)));
+	f32 cosy_cosp = 4096 - mulf32(2 * 4096, (mulf32(quaternion->y, quaternion->y) + mulf32(quaternion->z, quaternion->z)));
 	euler->z = Atan2(siny_cosp, cosy_cosp);
 }
 
@@ -835,8 +804,8 @@ f32 f32rand(f32 min, f32 max) {
 #endif
 }
 
-#ifndef _NOTDS
 long long Int64Div(int left, int right) {
+#ifndef _NOTDS
 	REG_DIVCNT = DIV_64_32;
 
 	while (REG_DIVCNT & DIV_BUSY);
@@ -847,5 +816,7 @@ long long Int64Div(int left, int right) {
 	while (REG_DIVCNT & DIV_BUSY);
 
 	return REG_DIV_RESULT;
-}
+#else
+	return (((long long)left) << 12) / right;
 #endif
+}

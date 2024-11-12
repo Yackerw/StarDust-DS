@@ -403,7 +403,7 @@ void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 
 void SphereObjOnBoxObj(Object* collider, Object* collidee) {
 	// first, do AABB check
-	f32 maxExtents = mulf32(Max(collidee->boxCol->extents.x, Max(collidee->boxCol->extents.y, collidee->boxCol->extents.z)), Fixed32ToNative(4096 + 2048));
+	f32 maxExtents = mulf32(Max(collidee->boxCol->extents.x, Max(collidee->boxCol->extents.y, collidee->boxCol->extents.z)), 4096 + 2048);
 	f32 extentsPlusRadius = maxExtents + collider->sphereCol->radius;
 
 	if (f32abs(collider->sphereCol->position->x - collidee->boxCol->position->x) > extentsPlusRadius ||
@@ -587,11 +587,11 @@ Object *CreateObject(int type, Vec3 *position, bool forced) {
 	newObj->position.x = position->x;
 	newObj->position.y = position->y;
 	newObj->position.z = position->z;
-	newObj->scale.x = Fixed32ToNative(4096);
-	newObj->scale.y = Fixed32ToNative(4096);
-	newObj->scale.z = Fixed32ToNative(4096);
+	newObj->scale.x = 4096;
+	newObj->scale.y = 4096;
+	newObj->scale.z = 4096;
 	newObj->objectType = type;
-	newObj->rotation.w = Fixed32ToNative(4096);
+	newObj->rotation.w = 4096;
 	if (firstObject.next != NULL) {
 		firstObject.next->previous = newObj;
 	}
