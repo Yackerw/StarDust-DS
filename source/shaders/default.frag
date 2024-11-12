@@ -10,7 +10,7 @@ in vec2 UV;
 in vec3 normal;
 
 void main() {
-	color = texture(mainTexture, UV).rgba;
+	color = texture(mainTexture, UV / textureSize(mainTexture, 0)).rgba;
 	color *= diffColor;
 	if (color.a <= 0) {
 		discard;
