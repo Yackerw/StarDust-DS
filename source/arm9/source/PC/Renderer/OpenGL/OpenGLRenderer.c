@@ -118,7 +118,7 @@ void Uniform1iv(unsigned int loc, unsigned int size, void* value) {
 	glUniform1iv(loc, size, value);
 }
 
-void AssignTexture(int slot, unsigned int texture) {
+void AssignTexture(int slot, unsigned int texture, unsigned int textureUniform) {
 	glActiveTexture(GL_TEXTURE0 + slot);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glUniform1i(texture, slot);

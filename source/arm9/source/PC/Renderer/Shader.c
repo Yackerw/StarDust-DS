@@ -486,6 +486,8 @@ void ParseShaderUniforms(char* v, Shader* shader) {
 					if (CheckStringExists(&shader->textureNames, str) == -1) {
 						PVectorAppend(&shader->textureNames, &newRef);
 						PVectorAppend(&shader->textureTypes, &uniType);
+						unsigned int tmp = GetUniformLocation(shader->pID, newRef);
+						PVectorAppend(&shader->textureUniforms, &tmp);
 					}
 					else {
 						free(newRef);
@@ -519,6 +521,7 @@ void DeleteShader(Shader* shader) {
 	FreePVector(&shader->uniformTypes);
 	FreePVector(&shader->uniformIDs);
 	FreePVector(&shader->uniformLengths);
+	FreePVector(&shader->textureUniforms);
 }
 
 Shader* ProcessShader(char** vert, char** frag, Shader* shader) {
@@ -574,6 +577,7 @@ void InitializeVectors(Shader* shader) {
 	shader->uniformTypes.itemSize = sizeof(int);
 	shader->uniformLengths.itemSize = sizeof(int);
 	shader->uniformNames.itemSize = sizeof(char*);
+	shader->textureUniforms.itemSize = sizeof(unsigned int);
 }
 
 Shader* LoadShader(const char* vertPath, const char* fragPath) {

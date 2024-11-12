@@ -343,7 +343,7 @@ void RenderSubMesh(Mesh* mesh, Material* material, SubMesh subMesh, MaterialShad
 	// iterate over our textures and set them all in the shader
 	for (int i = 0; i < pass->currTexs.count; ++i) {
 		if (((NativeTexture**)pass->currTexs.data)[i] != NULL) {
-			AssignTexture(i, ((NativeTexture**)pass->currTexs.data)[i]->texRef);
+			AssignTexture(i, ((NativeTexture**)pass->currTexs.data)[i]->texRef, ((unsigned int*)(((Shader*)pass->shader)->textureUniforms.data))[i]);
 		}
 	}
 	VertexAttribPointer(mesh->vertexBuffer, 0, 3, GL_FLOAT, false, 0, (void*)0);

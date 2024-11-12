@@ -14,6 +14,7 @@ typedef struct {
 	PsuedoVector textureNames;
 	//std::vector<int> textureTypes;
 	PsuedoVector textureTypes;
+	PsuedoVector textureUniforms;
 	//std::vector<GLuint> uniformIDs;
 	PsuedoVector uniformIDs;
 	//std::vector<int> uniformTypes;

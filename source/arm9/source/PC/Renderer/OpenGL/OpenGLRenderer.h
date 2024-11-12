@@ -32,7 +32,7 @@ void Uniform1fv(unsigned int loc, unsigned int size, void* value);
 
 void Uniform1iv(unsigned int loc, unsigned int size, void* value);
 
-void AssignTexture(int slot, unsigned int texture);
+void AssignTexture(int slot, unsigned int texture, unsigned int textureUniform);
 
 void VertexAttribPointer(unsigned int bufferId, int attribId, int size, int type, bool normalized, int stride, void* arrayBuffOffset);
 
@@ -60,6 +60,12 @@ void SetTextureWrapMirror(int UorV, unsigned int texRef);
 
 void EnableBackfaceCulling();
 
+void DisableBackfaceCulling();
+
 void EnableFrontfaceCulling();
+
+void DisableTransparency();
+
+void EnableTransparency();
 
 #endif
