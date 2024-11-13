@@ -459,7 +459,6 @@ void ProcessObjects() {
 		// handle physics
 		// two step movement
 		if (currObject->moves && currObject->active) {
-			currObject->dirtyTransform = true;
 			Vec3 stepVelocity;
 			if (deltaTimeEngine) {
 				stepVelocity.x = mulf32(currObject->velocity.x / 2, deltaTime);
@@ -514,20 +513,6 @@ void ProcessObjects() {
 	currObject = firstObject.next;
 	while (currObject != NULL) {
 		if (currObject->mesh != NULL && !currObject->culled) {
-			if (currObject->dirtyTransform) {
-				m4x4 workMatrix2, workMatrix3, matrixToRender;
-				//MakeTranslationMatrix(currObject->position.x, currObject->position.y, currObject->position.z, &workMatrix1);
-				MakeScaleMatrix(currObject->scale.x, currObject->scale.y, currObject->scale.z, &workMatrix2);
-				MakeRotationMatrix(&currObject->rotation, &workMatrix3);
-				//CombineMatrices(&workMatrix1, &workMatrix2, &workMatrix4);
-				Combine3x3Matrices(&workMatrix2, &workMatrix3, &workMatrix3);
-				// optimize generation of x y z
-				workMatrix3.m[3] = currObject->position.x;
-				workMatrix3.m[7] = currObject->position.y;
-				workMatrix3.m[11] = currObject->position.z;
-				MatrixToDSMatrix(&workMatrix3, &currObject->transform);
-				currObject->dirtyTransform = false;
-			}
 			if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
 				if (deltaTimeEngine) {
 					f32 tmp = currObject->animator->speed;
@@ -537,15 +522,9 @@ void ProcessObjects() {
 				} else {
 					UpdateAnimator(currObject->animator, currObject->mesh);
 				}
-				// TODO: incorporate AABBInCamera into RenderModel and RenderModelRigged so that they don't need a pre-generated matrix, instead just using the one already
-				// being generated on the GPU.
-				if (AABBInCamera(&currObject->mesh->boundsMin, &currObject->mesh->boundsMax, &currObject->transform)) {
-					RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
-				}
+				RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
 			} else {
-				if (AABBInCamera(&currObject->mesh->boundsMin, &currObject->mesh->boundsMax, &currObject->transform)) {
-					RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
-				}
+				RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
 			}
 		}
 		Object *tmpObj = currObject;
@@ -602,7 +581,6 @@ Object *CreateObject(int type, Vec3 *position, bool forced) {
 	if (startFuncs[type] != NULL) {
 		startFuncs[type](newObj);
 	}
-	newObj->dirtyTransform = true;
 	newObj->references.object = newObj;
 	newObj->active = true;
 	if (!defaultNetInstance == NULL && networkedObjectTypes[type] && defaultNetInstance->host && defaultNetInstance->active) {

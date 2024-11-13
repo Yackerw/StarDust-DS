@@ -1017,6 +1017,12 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	glLoadMatrix4x4(&rotationMatrixPrepared);
 	glScalef32(scale->x, scale->y, scale->z);
 	glStoreMatrix(lastBone);
+
+	// hardware AABB test
+	if (!BoxTest(model->boundsMin.x, model->boundsMin.y, model->boundsMin.z, model->boundsMax.x - model->boundsMin.x, model->boundsMax.y - model->boundsMin.y, model->boundsMax.z - model->boundsMin.z)) {
+		return;
+	}
+
 	// cache up to 31 bones.
 	for (int i = 0; i <= lastBone; ++i) {
 		//glRestoreMatrix(lastBone);
@@ -1161,6 +1167,12 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
 	glLoadMatrix4x4(&rotationMatrixPrepared);
 	glScalef32(scale->x, scale->y, scale->z);
+
+	// hardware AABB test
+	if (!BoxTest(model->boundsMin.x, model->boundsMin.y, model->boundsMin.z, model->boundsMax.x - model->boundsMin.x, model->boundsMax.y - model->boundsMin.y, model->boundsMax.z - model->boundsMin.z)) {
+		return;
+	}
+
 	VertexHeader *currVertexGroup = model->vertexGroups;
 	if (mats == NULL) {
 		mats = model->defaultMats;
@@ -1622,6 +1634,12 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
+
+	// check to ensure it's in the camera!
+	if (!AABBInCamera(&model->boundsMin, &model->boundsMax, &matrix)) {
+		return;
+	}
+
 	// really big TODO: re-use materials for efficiency
 	Material renderMat;
 	InitMaterial(&renderMat);
@@ -1723,6 +1741,12 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
+
+	// check to ensure it's in the camera!
+	if (!AABBInCamera(&model->boundsMin, &model->boundsMax, &matrix)) {
+		return;
+	}
+
 	// really big TODO: re-use materials for efficiency
 	Material renderMat;
 	InitMaterial(&renderMat);

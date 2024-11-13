@@ -39,9 +39,7 @@ struct Object {
 	bool culled;
 	bool trigger;
 	bool destroy;
-	bool dirtyTransform;
 	bool active;
-	m4x4 transform;
 	Animator *animator;
 	unsigned int layer;
 	int netId;
