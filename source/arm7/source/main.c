@@ -1,7 +1,6 @@
 #include <nds.h>
 #ifndef _NOTDS
-#include <dswifi7.h>
-#include <maxmod7.h>
+#include <calico.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -69,19 +68,6 @@ typedef struct {
 	volatile unsigned int SOUNDLEN;
 } AudioRegister;
 
-//---------------------------------------------------------------------------------
-void VblankHandler(void) {
-//---------------------------------------------------------------------------------
-	Wifi_Update();
-}
-
-
-//---------------------------------------------------------------------------------
-void VcountHandler() {
-//---------------------------------------------------------------------------------
-	inputGetAndSend();
-}
-
 volatile bool exitflag = false;
 
 //---------------------------------------------------------------------------------
@@ -109,7 +95,7 @@ void PlaySound(SoundData* sd) {
 
 	// bail out early, no register was found
 	if (currRegister == -1) {
-		fifoSendValue32(FIFO_USER_01, -1);
+		pxiReply(PxiChannel_User0, -1);
 		return;
 	}
 
@@ -150,14 +136,14 @@ void PlaySound(SoundData* sd) {
 	// aaand go!
 	audioRegisters[currRegister].SOUNDCNT = workValue;
 
-	fifoSendValue32(FIFO_USER_01, currRegister);
+	pxiReply(PxiChannel_User0, currRegister);
 }
 
 void StopSound(int id) {
 	AudioRegister* audioRegisters = (AudioRegister*)0x04000400;
 	audioRegisters[id].SOUNDCNT = 0;
 	// acknowledge that it's been done
-	fifoSendValue32(FIFO_USER_01, 0);
+	pxiReply(PxiChannel_User0, 0);
 }
 
 void SetSoundPan(FIFOAudioParameter* data) {
@@ -165,7 +151,7 @@ void SetSoundPan(FIFOAudioParameter* data) {
 	audioRegisters[data->id].SOUNDCNT &= !((0x7F) << 16);
 	audioRegisters[data->id].SOUNDCNT |= mulf32(data->value, 127) << 16;
 	// acknowledge that it's been done
-	fifoSendValue32(FIFO_USER_01, 0);
+	pxiReply(PxiChannel_User0, 0);
 }
 
 void SetSoundVolume(FIFOAudioParameter* data) {
@@ -173,10 +159,10 @@ void SetSoundVolume(FIFOAudioParameter* data) {
 	audioRegisters[data->id].SOUNDCNT &= !0x7F;
 	audioRegisters[data->id].SOUNDCNT |= mulf32(data->value, 127);
 	// acknowledge that it's been done
-	fifoSendValue32(FIFO_USER_01, 0);
+	pxiReply(PxiChannel_User0, 0);
 }
 
-void PlayAudioCallback(void* address, void* userdata) {
+void PlayAudioCallback(void* userdata, long unsigned int address) {
 	FIFOAudio* data = (FIFOAudio*)address;
 	switch (data->type) {
 	case 0:
@@ -206,40 +192,42 @@ int main() {
 	dmaFillWords(0, (void*)0x04000400, 0x100);
 
 	REG_SOUNDCNT |= SOUND_ENABLE;
-	writePowerManagement(PM_CONTROL_REG, ( readPowerManagement(PM_CONTROL_REG) & ~PM_SOUND_MUTE ) | PM_SOUND_AMP );
-	powerOn(POWER_SOUND);
+	// Read settings from NVRAM
+	envReadNvramSettings();
 
-	readUserSettings();
-	ledBlink(0);
+	// Set up extended keypad server (X/Y/hinge)
+	keypadStartExtServer();
 
-	irqInit();
-	// Start the RTC tracking IRQ
-	initClockIRQ();
-	fifoInit();
+	// Configure and enable VBlank interrupt
+	lcdSetIrqMask(DISPSTAT_IE_ALL, DISPSTAT_IE_VBLANK);
+	irqEnable(IRQ_VBLANK);
+
+	// Set up RTC
+	rtcInit();
+	rtcSyncTime();
+
+	// Initialize power management
+	pmInit();
+
+	// Set up block device peripherals
+	blkInit();
+
+	// Set up touch screen driver
 	touchInit();
+	touchStartServer(80, MAIN_THREAD_PRIO);
 
-	SetYtrigger(80);
+	// Set up sound and mic driver
+	soundStartServer(MAIN_THREAD_PRIO-0x10);
+	micStartServer(MAIN_THREAD_PRIO-0x18);
 
-	if (isDSiMode()) {
-		installWifiFIFO();
-	}
-	// ??? audio stops working without this
-	installSoundFIFO();
+	// Set up wireless manager
+	wlmgrStartServer(MAIN_THREAD_PRIO-8);
 
-	installSystemFIFO();
-
-	irqSet(IRQ_VCOUNT, VcountHandler);
-	irqSet(IRQ_VBLANK, VblankHandler);
-
-	irqEnable( IRQ_VBLANK | IRQ_VCOUNT | IRQ_NETWORK);
-
-	setPowerButtonCB(powerButtonCB);
-
-	fifoSetAddressHandler(FIFO_USER_01, PlayAudioCallback, NULL);
+	pxiSetHandler(PxiChannel_User0, PlayAudioCallback, NULL);
 
 	// Keep the ARM7 mostly idle
-	while (!exitflag) {
-		swiWaitForVBlank();
+	while (pmMainLoop()) {
+		threadWaitForVBlank();
 	}
 	return 0;
 }

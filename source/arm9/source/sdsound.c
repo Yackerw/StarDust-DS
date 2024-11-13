@@ -238,11 +238,7 @@ int PlaySound(SoundData* sound) {
 	FIFOData.type = FIFO_SOUND_PLAY;
 	FIFOData.data = sound;
 	DC_FlushRange(&FIFOData, sizeof(FIFOAudio));
-	fifoSendAddress(FIFO_USER_01, &FIFOData);
-	while (!fifoCheckValue32(FIFO_USER_01)) {
-		
-	}
-	int soundValue = fifoGetValue32(FIFO_USER_01);
+	int soundValue = pxiSendAndReceive(PxiChannel_User0, (unsigned int)&FIFOData);
 	if (soundValue == -1) {
 		return -1;
 	}
@@ -269,12 +265,7 @@ void StopSoundEffect(int id) {
 	FIFOData.type = FIFO_SOUND_STOP;
 	FIFOData.data = (void*)currChannel;
 	DC_FlushRange(&FIFOData, sizeof(FIFOAudio));
-	fifoSendAddress(FIFO_USER_01, &FIFOData);
-	// wait for it to finish
-	while (!fifoCheckValue32(FIFO_USER_01)) {
-
-	}
-	fifoGetValue32(FIFO_USER_01);
+	pxiSendAndReceive(PxiChannel_User0, (unsigned int)&FIFOData);
 }
 
 void SetSoundPan(int id, f32 pan) {
@@ -291,12 +282,7 @@ void SetSoundPan(int id, f32 pan) {
 	FIFOParameters.id = currChannel;
 	FIFOParameters.value = pan;
 	DC_FlushRange(&FIFOParameters, sizeof(FIFOAudioParameter));
-	fifoSendAddress(FIFO_USER_01, &FIFOData);
-	// wait for it to finish
-	while (!fifoCheckValue32(FIFO_USER_01)) {
-
-	}
-	fifoGetValue32(FIFO_USER_01);
+	pxiSendAndReceive(PxiChannel_User0, (unsigned int)&FIFOData);
 }
 
 void SetSoundVolume(int id, f32 volume) {
@@ -313,12 +299,7 @@ void SetSoundVolume(int id, f32 volume) {
 	FIFOParameters.id = currChannel;
 	FIFOParameters.value = volume;
 	DC_FlushRange(&FIFOParameters, sizeof(FIFOAudioParameter));
-	fifoSendAddress(FIFO_USER_01, &FIFOData);
-	// wait for it to finish
-	while (!fifoCheckValue32(FIFO_USER_01)) {
-
-	}
-	fifoGetValue32(FIFO_USER_01);
+	pxiSendAndReceive(PxiChannel_User0, (unsigned int)&FIFOData);
 }
 
 int GetMusicPosition() {

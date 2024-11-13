@@ -531,7 +531,10 @@ void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out) {
 	out->x = mulf32(U.y, V.z) - mulf32(U.z, V.y);
 	out->y = mulf32(U.z, V.x) - mulf32(U.x, V.z);
 	out->z = mulf32(U.x, V.y) - mulf32(U.y, V.x);
-	Normalize(out, out);
+	f32 magnitude = sqrtf32(out->x * out->x + out->y * out->y + out->z * out->z);
+	out->x = divf32(out->x, magnitude);
+	out->y = divf32(out->y, magnitude);
+	out->z = divf32(out->z, magnitude);
 }
 
 // above function is unreliable at low precision
