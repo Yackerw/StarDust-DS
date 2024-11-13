@@ -442,7 +442,6 @@ void CacheRiggedModel(Model* reference) {
 		if (NOPCount != 0) {
 			FIFOCount += 1;
 		}
-		int FIFOIterator = FIFOCount;
 		// agghh
 		FIFOCount += FIFOCountLaterAddition + vertCount * 4 + 1;
 		// now generate FIFO batch
@@ -1342,7 +1341,7 @@ void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 
 	DC_FlushRange(newTex, flushRange);
 	newTex->palette = (unsigned short*)((uint32_t)newTex->palette + (uint32_t)newTex);
-	newTex->image = (char*)((uint32_t)newTex->image + (uint32_t)newTex);
+	newTex->image = (unsigned char*)((uint32_t)newTex->image + (uint32_t)newTex);
 	if (upload) {
 		UploadTexture(newTex);
 	}
@@ -2455,7 +2454,7 @@ void UploadSprite(Sprite* input, bool sub, bool BG) {
 }
 
 void LoadSpriteFromRAM(Sprite* sprite) {
-	sprite->image = (char*)((uint32_t)sprite->image + (uint32_t)sprite);
+	sprite->image = (unsigned char*)((uint32_t)sprite->image + (uint32_t)sprite);
 	sprite->palette = (unsigned short*)((uint32_t)sprite->palette + (uint32_t)sprite);
 }
 

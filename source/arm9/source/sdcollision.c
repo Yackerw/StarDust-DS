@@ -725,7 +725,6 @@ void DestroyCollisionMesh(MeshCollider* meshCollider) {
 
 // doesn't return position by default since this should rarely be used by actual game code
 bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t) {
-	Vec3 tMin, tMax;
 	Vec3 workVec;
 	Vec3 newDir = *direction;
 	// division by 0 fix
@@ -790,9 +789,9 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	// return normal as well
 	if (normal != NULL) {
 		f32 tSeries[] = { tMin1, tMax1, tMin2, tMax2, tMin3, tMax3 };
-		Vec3 normals[] = { {-4096, 0, 0 }, {4096, 0, 0},
-			{0, -4096, 0}, {0, 4096, 0},
-			{0, 0, -4096}, {0, 0, 4096} };
+		Vec3 normals[] = { {{{-4096, 0, 0 }}}, {{{4096, 0, 0}}},
+			{{{0, -4096, 0}}}, {{{0, 4096, 0}}},
+			{{{0, 0, -4096}}}, {{{0, 0, 4096}}} };
 		for (int i = 0; i < 6; ++i) {
 			if (dist == tSeries[i]) {
 				*normal = normals[i];
@@ -933,17 +932,17 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 
 	// attempt at optimization
 	f32 maxBounds = Max(Max(mesh->AABBBounds.x, mesh->AABBBounds.y), mesh->AABBBounds.z);
-	Vec3 oldMeshMax = { 
+	Vec3 oldMeshMax = { { {
 		mulf32(mesh->AABBPosition.x + maxBounds, meshScale->x) + meshOffset->x,
 		mulf32(mesh->AABBPosition.y + maxBounds, meshScale->y) + meshOffset->y,
 		mulf32(mesh->AABBPosition.z + maxBounds, meshScale->z) + meshOffset->z
-	};
+	} } };
 
-	Vec3 oldMeshMin = {
+	Vec3 oldMeshMin = { { {
 		mulf32(mesh->AABBPosition.x - maxBounds, meshScale->x) + meshOffset->x,
 		mulf32(mesh->AABBPosition.y - maxBounds, meshScale->y) + meshOffset->y,
 		mulf32(mesh->AABBPosition.z - maxBounds, meshScale->z) + meshOffset->z
-	};
+	} } };
 
 	if (!AABBCheck(rayMin, rayMax, &oldMeshMin, &oldMeshMax)) {
 		return false;
@@ -964,35 +963,35 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 	Normalize(&newDirection, &newDirection);
 
 	// generate new length value
-	Vec3 absDir = {
+	Vec3 absDir = { { {
 		f32abs(newDirection.x),
 		f32abs(newDirection.y),
 		f32abs(newDirection.z)
-	};
-	Vec3 absScale = {
+	} } };
+	Vec3 absScale = { { {
 		f32abs(meshScale->x),
 		f32abs(meshScale->y),
 		f32abs(meshScale->z)
-	};
+	} } };
 	f32 lenDot = DotProduct(&absDir, &absScale);
 	f32 newLength = divf32(length, lenDot);
 
-	Vec3 rayPlusDir = {
+	Vec3 rayPlusDir = { { {
 	newPoint.x + mulf32(newDirection.x, newLength),
 	newPoint.y + mulf32(newDirection.y, newLength),
 	newPoint.z + mulf32(newDirection.z, newLength)
-	};
+	} } };
 
-	Vec3 rayAABBMin = {
+	Vec3 rayAABBMin = { { {
 		Min(newPoint.x, rayPlusDir.x),
 		Min(newPoint.y, rayPlusDir.y),
 		Min(newPoint.z, rayPlusDir.z)
-	};
-	Vec3 rayAABBMax = {
+	} } };
+	Vec3 rayAABBMax = { { {
 		Max(newPoint.x, rayPlusDir.x),
 		Max(newPoint.y, rayPlusDir.y),
 		Max(newPoint.z, rayPlusDir.z)
-	};
+	} } };
 
 	// check against the mesh AABB first
 	f32 tempt;
@@ -1121,7 +1120,7 @@ bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3*
 
 	// center around 0
 	Vec3 boxMin;
-	Vec3 zeroVec = { 0, 0, 0 };
+	Vec3 zeroVec = { { { 0, 0, 0 } } };
 	Vec3Subtraction(&zeroVec, &box->extents, &boxMin);
 
 	Vec3 closestPoint;

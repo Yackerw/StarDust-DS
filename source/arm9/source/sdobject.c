@@ -63,22 +63,22 @@ bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMa
 	int closestTriHit;
 	Vec3 closestNormal;
 
-	Vec3 rayPlusDir = {
+	Vec3 rayPlusDir = { { {
 		point->x + mulf32(direction->x, length),
 		point->y + mulf32(direction->y, length),
 		point->z + mulf32(direction->z, length)
-	};
+	} } };
 
-	Vec3 rayAABBMin = {
+	Vec3 rayAABBMin = { { {
 		Min(point->x, rayPlusDir.x),
 		Min(point->y, rayPlusDir.y),
 		Min(point->z, rayPlusDir.z)
-	};
-	Vec3 rayAABBMax = {
+	} } };
+	Vec3 rayAABBMax = { { {
 		Max(point->x, rayPlusDir.x),
 		Max(point->y, rayPlusDir.y),
 		Max(point->z, rayPlusDir.z)
-	};
+	} } };
 
 	while (colObject != NULL) {
 		// ensure object is solid and on the layer mask
@@ -88,7 +88,7 @@ bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMa
 			int tempTri;
 			if (colObject->sphereCol != NULL) {
 				// oh boy, raycast against S P H E R E
-				if (RayOnSphere(point, direction, colObject->sphereCol, &tempT, NULL)); {
+				if (RayOnSphere(point, direction, colObject->sphereCol, &tempT, NULL)) {
 					if (tempT <= closestHit) {
 						everHit = true;
 						closestHit = tempT;
@@ -342,8 +342,6 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 	max.y = newSphere.position->y + newSphere.radius;
 	max.z = newSphere.position->z + newSphere.radius;
 	unsigned short* trisToCollideWith = FindTrianglesFromOctree(&min, &max, meshObject->meshCol, &totalTris);
-	f32 penetration;
-	Vec3 normal;
 	CollisionHit hitInfo;
 	hitInfo.colliderType = COLLIDER_MESH;
 	hitInfo.hitObject = meshObject;
@@ -583,7 +581,7 @@ Object *CreateObject(int type, Vec3 *position, bool forced) {
 	}
 	newObj->references.object = newObj;
 	newObj->active = true;
-	if (!defaultNetInstance == NULL && networkedObjectTypes[type] && defaultNetInstance->host && defaultNetInstance->active) {
+	if (defaultNetInstance != NULL && networkedObjectTypes[type] && defaultNetInstance->host && defaultNetInstance->active) {
 		// find first unused networked object slot
 		int objSlot = 0;
 		while (objSlot < networkedObjectsCount) {
@@ -706,7 +704,7 @@ void SyncObjectCreateReceive(void* data, int dataLen, int node, NetworkInstance*
 	}
 	int netId = ((int*)data)[0];
 	int objId = ((int*)data)[1];
-	Vec3 zeroVec = { 0, 0, 0 };
+	Vec3 zeroVec = { { { 0, 0, 0 } } };
 	Object* newObj = CreateObject(objId, &zeroVec, true);
 	// overwrite old object if it exists, allocate memory, etc
 	while (netId >= networkedObjectsCount) {

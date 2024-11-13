@@ -758,7 +758,7 @@ void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut) {
 	m4x4 inverted;
 	InvertMatrix(matrix, &inverted);
 	// we have to generate all the vertices of the matrix for our frustum AABB code...
-	Vec3 workVec = { -4096, -4096, -4096 };
+	Vec3 workVec = { { { -4096, -4096, -4096 } } };
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[0]);
 	workVec.z = 4096;
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[1]);
@@ -823,7 +823,7 @@ long long Int64Div(int left, int right) {
 
 	while (REG_DIVCNT & DIV_BUSY);
 
-	REG_DIV_NUMER = ((int64)left) << 12;
+	REG_DIV_NUMER = ((long long)left) << 12;
 	REG_DIV_DENOM_L = right;
 
 	while (REG_DIVCNT & DIV_BUSY);
