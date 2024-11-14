@@ -39,6 +39,8 @@ ModelDrawCall* modelDrawCalls;
 int modelDrawCallCount;
 int modelDrawCallAllocated;
 
+Vec3 cameraRecentering;
+
 #ifdef _WIN32
 Shader *defaultShader;
 Shader *defaultRiggedShader;
@@ -1017,9 +1019,9 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	m4x4 rotationMatrix;
 	m4x4 rotationMatrixPrepared;
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	rotationMatrix.m[3] = position->x;
-	rotationMatrix.m[7] = position->y;
-	rotationMatrix.m[11] = position->z;
+	rotationMatrix.m[3] = position->x - cameraRecentering.x;
+	rotationMatrix.m[7] = position->y - cameraRecentering.y;
+	rotationMatrix.m[11] = position->z - cameraRecentering.z;
 	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
 	glLoadMatrix4x4(&rotationMatrixPrepared);
 	glScalef32(scale->x, scale->y, scale->z);
@@ -1175,9 +1177,9 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 	m4x4 rotationMatrix;
 	m4x4 rotationMatrixPrepared;
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	rotationMatrix.m[3] = position->x;
-	rotationMatrix.m[7] = position->y;
-	rotationMatrix.m[11] = position->z;
+	rotationMatrix.m[3] = position->x - cameraRecentering.x;
+	rotationMatrix.m[7] = position->y - cameraRecentering.y;
+	rotationMatrix.m[11] = position->z - cameraRecentering.z;
 	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
 	glLoadMatrix4x4(&rotationMatrixPrepared);
 	glScalef32(scale->x, scale->y, scale->z);
@@ -1654,9 +1656,9 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 	m4x4 rotationMatrix;
 	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	scaleMatrix.m[3] = position->x;
-	scaleMatrix.m[7] = position->y;
-	scaleMatrix.m[11] = position->z;
+	scaleMatrix.m[3] = position->x - cameraRecentering.x;
+	scaleMatrix.m[7] = position->y - cameraRecentering.y;
+	scaleMatrix.m[11] = position->z - cameraRecentering.z;
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
@@ -1761,9 +1763,9 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 	m4x4 rotationMatrix;
 	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	scaleMatrix.m[3] = position->x;
-	scaleMatrix.m[7] = position->y;
-	scaleMatrix.m[11] = position->z;
+	scaleMatrix.m[3] = position->x - cameraRecentering.x;
+	scaleMatrix.m[7] = position->y - cameraRecentering.y;
+	scaleMatrix.m[11] = position->z - cameraRecentering.z;
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
@@ -2905,10 +2907,17 @@ void SetupCameraMatrix() {
 	glMultMatrix4x4(&tmpMat);
 	#endif
 	gluPerspectivef32(cameraFOV, 5461, cameraNear, cameraFar);
+	Vec3 cameraPositionMod;
+	cameraPositionMod.x = cameraPosition.x % 4096;
+	cameraPositionMod.y = cameraPosition.y % 4096;
+	cameraPositionMod.z = cameraPosition.z % 4096;
+	cameraRecentering.x = cameraPosition.x - cameraPositionMod.x;
+	cameraRecentering.y = cameraPosition.y - cameraPositionMod.y;
+	cameraRecentering.z = cameraPosition.z - cameraPositionMod.z;
 	Vec3 camPosInverse;
-	camPosInverse.x = -cameraPosition.x;
-	camPosInverse.y = -cameraPosition.y;
-	camPosInverse.z = -cameraPosition.z;
+	camPosInverse.x = -cameraPositionMod.x;
+	camPosInverse.y = -cameraPositionMod.y;
+	camPosInverse.z = -cameraPositionMod.z;
 	m4x4 camTransform;
 	MakeTranslationMatrix(camPosInverse.x, camPosInverse.y, camPosInverse.z, &camTransform);
 	// rotation
@@ -2933,10 +2942,17 @@ void SetupCameraMatrix() {
 	CombineMatricesFull(&tmpMat, &perspectiveMatrix, &workMat);
 	memcpy(&perspectiveMatrix, &workMat, sizeof(m4x4));
 #endif
+	Vec3 cameraPositionMod;
+	cameraPositionMod.x = cameraPosition.x % 4096;
+	cameraPositionMod.y = cameraPosition.y % 4096;
+	cameraPositionMod.z = cameraPosition.z % 4096;
+	cameraRecentering.x = cameraPosition.x - cameraPositionMod.x;
+	cameraRecentering.y = cameraPosition.y - cameraPositionMod.y;
+	cameraRecentering.z = cameraPosition.z - cameraPositionMod.z;
 	Vec3 camPosInverse;
-	camPosInverse.x = -cameraPosition.x;
-	camPosInverse.y = -cameraPosition.y;
-	camPosInverse.z = -cameraPosition.z;
+	camPosInverse.x = -cameraPositionMod.x;
+	camPosInverse.y = -cameraPositionMod.y;
+	camPosInverse.z = -cameraPositionMod.z;
 	m4x4 camTranslation;
 	MakeTranslationMatrix(camPosInverse.x, camPosInverse.y, camPosInverse.z, &camTranslation);
 	// rotation
