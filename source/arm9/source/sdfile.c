@@ -57,6 +57,7 @@ int AsyncIOHandler(void* notUsed) {
 		if (dataToRead == NULL) {
 			// failed to find any data to read! we're done here!
 			ioThreadRunning = false;
+			// we need to keep the mutex locked until here so it doesn't mistakenly think we're still running the thread
 			rmutexUnlock(&ioMutex);
 			return 1;
 		}

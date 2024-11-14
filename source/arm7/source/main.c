@@ -5,19 +5,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct {
-	int type;
-	char* fileToRead;
-	char* readBuffer;
-	int bytesToRead;
-	int loopEnd;
-	int loopStart;
-	FILE* file;
-	int fileLength;
-	bool loop;
-	volatile bool done;
-} AsyncReadData;
-
 #define f32 int
 
 #define SOUND_FREQ(n)	((-0x1000000 / (n)))
@@ -105,10 +92,10 @@ void PlaySound(SoundData* sd) {
 	unsigned int workValue = 0x80000000;
 
 	// volume
-	workValue |= mulf32(sd->volume, 127);
+	workValue |= (mulf32(sd->volume, 127) & 0x7F);
 
 	// panning
-	workValue |= mulf32(sd->pan, 127) << 16;
+	workValue |= (mulf32(sd->pan, 127) & 0x7F) << 16;
 	// loop
 	if (sd->loop) {
 		workValue |= 1 << 27;
@@ -120,7 +107,11 @@ void PlaySound(SoundData* sd) {
 	workValue |= (sd->sound->bytesPerSample - 1) << 29;
 
 	// loop point
-	audioRegisters[currRegister].SOUNDPNT = (sd->loopStart * sd->sound->bytesPerSample) / 4;
+	if (sd->loop) {
+		audioRegisters[currRegister].SOUNDPNT = (sd->loopStart * sd->sound->bytesPerSample) / 4;
+	} else {
+		audioRegisters[currRegister].SOUNDPNT = 0;
+	}
 	// audio length
 	if (sd->loop && sd->loopEnd > 0) {
 		int realLoopEnd = sd->loopEnd * sd->sound->bytesPerSample;

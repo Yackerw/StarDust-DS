@@ -19,11 +19,15 @@ typedef struct {
 #ifndef _NOTDS
 #include <nds/ndstypes.h>
 #include "sdmath.h"
+#include <calico.h>
 
 bool playingMusic;
 PlayingSoundData currMusicData;
 
 int sfxIds[16];
+
+SoundData localSound;
+Mutex soundMutex;
 
 #define FIFO_SOUND_PLAY 0
 #define FIFO_SOUND_STOP 1
@@ -173,17 +177,17 @@ void PlayMusic(char* filedir, int offset) {
 		fseek(currMusic->streamFile, 0, SEEK_SET);
 	}
 	fseek(currMusic->streamFile, currMusic->fOffset, SEEK_SET);
-	SoundData* toPlay = malloc(sizeof(SoundData));
+	SoundData toPlay;
 	currMusicData = sd;
 	currMusic->samples = malloc(4096);
 
-	toPlay->sound = sd.sound;
-	toPlay->pan = sd.pan;
-	toPlay->pitch = sd.pitch;
-	toPlay->volume = sd.volume;
-	toPlay->loop = true;
-	toPlay->loopStart = 0;
-	toPlay->loopEnd = 4096 / sd.sound->bytesPerSample;
+	toPlay.sound = sd.sound;
+	toPlay.pan = sd.pan;
+	toPlay.pitch = sd.pitch;
+	toPlay.volume = sd.volume;
+	toPlay.loop = true;
+	toPlay.loopStart = 0;
+	toPlay.loopEnd = 4096 / sd.sound->bytesPerSample;
 
 	musicBufferReadOffset = 0;
 	musicBufferOffset = 0;
@@ -205,8 +209,7 @@ void PlayMusic(char* filedir, int offset) {
 
 	DC_FlushRange(currMusic, sizeof(SoundEffect));
 
-	currMusicId = PlaySound(toPlay);
-	free(toPlay);
+	currMusicId = PlaySound(&toPlay);
 	currMusic->dataSize = tmp;
 	if (currMusicId == -1) {
 		StopMusic();
@@ -240,10 +243,14 @@ void UninitializeAudio() {
 
 
 int PlaySound(SoundData* sound) {
+	mutexLock(&soundMutex);
 	FIFOData.type = FIFO_SOUND_PLAY;
-	FIFOData.data = sound;
+	localSound = (*sound);
+	FIFOData.data = &localSound;
 	DC_FlushRange(&FIFOData, sizeof(FIFOAudio));
+	DC_FlushRange(&localSound, sizeof(SoundData));
 	int soundValue = pxiSendAndReceive(PxiChannel_User0, (unsigned int)&FIFOData);
+	mutexUnlock(&soundMutex);
 	if (soundValue == -1) {
 		return -1;
 	}
