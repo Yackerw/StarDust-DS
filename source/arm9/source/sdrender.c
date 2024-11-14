@@ -326,7 +326,7 @@ void TextureAsyncCallback(void* data, bool success) {
 	}
 
 	// okay, we're good, initialize the texture properly
-	LoadTextureFromRAM(tq->tex, tq->upload, tq->textureToLoad);
+	tq->tex = LoadTextureFromRAM(tq->tex, tq->upload, tq->textureToLoad);
 
 	tq->callBack(tq->callBackData, tq->tex);
 	UpdateTextureQueue();
@@ -964,8 +964,14 @@ void SetupMaterial(SDMaterial* mat, bool rigged) {
 	Texture* currTex = mat->texture;
 	//glBindTexture(0, currTex->textureId);
 	//glAssignColorTable(0, currTex->paletteId);
-	GFX_TEX_FORMAT = currTex->textureWrite; // this is a minor optimization, but glBindTexture and glAssignColorTable accounted for about half the call time for material setup, and material setup needs to be called a lot.
-	GFX_PAL_FORMAT = currTex->paletteWrite;
+	if (currTex != NULL) {
+		GFX_TEX_FORMAT = currTex->textureWrite; // this is a minor optimization, but glBindTexture and glAssignColorTable accounted for about half the call time for material setup, and material setup needs to be called a lot.
+		GFX_PAL_FORMAT = currTex->paletteWrite;
+	}
+	else {
+		GFX_TEX_FORMAT = 0;
+		GFX_PAL_FORMAT = 0;
+	}
 }
 
 void GetMatrixLengths(m4x4* input, Vec3* output) {
@@ -1309,7 +1315,7 @@ void UploadTexture(Texture* input) {
 	input->paletteWrite = ((gl_palette_data*)DynamicArrayGet( &glGlob->palettePtrs, tex->palIndex ))->addr;
 }
 
-void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
+Texture *LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	char* input = name;
 
 	int flushRange = 0x30;
@@ -1357,13 +1363,27 @@ void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	// save the name
 	newTex->name = malloc(strlen(input) + 1);
 	strcpy(newTex->name, input);
+
+	Texture* retTex = newTex;
+
+	if (!newTex->dontReleaseFromRAM) {
+		retTex = (Texture*)malloc(sizeof(Texture));
+		*retTex = (*newTex);
+		retTex->palette = NULL;
+		retTex->image = NULL;
+		free(newTex);
+	}
+
 	// place in linked list
 	if (startTexture.next != NULL) {
-		startTexture.next->prev = newTex;
+		startTexture.next->prev = retTex;
 	}
-	newTex->next = startTexture.next;
-	startTexture.next = newTex;
-	newTex->prev = &startTexture;
+
+	retTex->next = startTexture.next;
+	startTexture.next = retTex;
+	retTex->prev = &startTexture;
+
+	return retTex;
 }
 
 Texture *LoadTexture(char *input, bool upload) {
@@ -1386,8 +1406,7 @@ Texture *LoadTexture(char *input, bool upload) {
 	Texture *newTex = malloc(fsize);
 	fread_MusicYielding(newTex, fsize, 1, f);
 	fclose(f);
-	LoadTextureFromRAM(newTex, upload, input);
-	return newTex;
+	return LoadTextureFromRAM(newTex, upload, input);
 }
 
 void UnloadTexture(Texture *tex) {
@@ -1570,7 +1589,7 @@ void UploadTexture(Texture* input) {
 	input->uploaded = true;
 }
 
-void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
+Texture* LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	char* input = name;
 	newTex->palette = (unsigned short*)((uint32_t)newTex->palette + (uint32_t)newTex);
 	newTex->image = (char*)((uint32_t)newTex->image + (uint32_t)newTex);
@@ -1589,6 +1608,7 @@ void LoadTextureFromRAM(Texture* newTex, bool upload, char* name) {
 	if (upload) {
 		UploadTexture(newTex);
 	}
+	return newTex;
 }
 
 Texture* LoadTexture(char* input, bool upload) {
@@ -1615,9 +1635,7 @@ Texture* LoadTexture(char* input, bool upload) {
 	fread_MusicYielding(newTex, fsize, 1, f);
 	fclose(f);
 	
-	LoadTextureFromRAM(newTex, upload, input);
-
-	return newTex;
+	return LoadTextureFromRAM(newTex, upload, input);
 }
 
 void PCRenderNormalize(Vec3f* in, Vec3f* out) {

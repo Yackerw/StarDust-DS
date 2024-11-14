@@ -135,7 +135,7 @@ struct Texture {
 	char type;
 	char width;
 	char height;
-	bool releaseFromRAM;
+	bool dontReleaseFromRAM;
 	unsigned int numReferences;
 	unsigned char mapTypeU;
 	unsigned char mapTypeV;
@@ -205,7 +205,7 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 
 void UploadTexture(Texture* input);
 
-void LoadTextureFromRAM(Texture* input, bool upload, char* name);
+Texture *LoadTextureFromRAM(Texture* input, bool upload, char* name);
 
 Texture *LoadTexture(char *input, bool upload);
 
