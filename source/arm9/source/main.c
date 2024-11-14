@@ -62,9 +62,10 @@ void WindowsInitialization() {
 #endif
 
 int main() {
-	InitSound();
-	// set top screen for 3d
 #ifndef _NOTDS
+	defaultExceptionHandler();
+	
+	// set top screen for 3d
 	videoSetMode(MODE_0_3D);
 	videoSetModeSub(MODE_0_2D);
 	// initialize gl engine
@@ -106,8 +107,6 @@ int main() {
 
 	InitializeNetworking(1, 1);
 
-	InitializeAsyncFiles();
-
 	InitializeSubBG();
 	
 	InitDeltaTime();
@@ -126,7 +125,8 @@ int main() {
 		// flush screen
 #ifndef _NOTDS
 		// this handles glFlush(0) and swiWaitForVBlank() for us!
-		AsyncFileHandler();
+		glFlush(0);
+		threadWaitForVBlank();
 		glClearDepth(GL_MAX_DEPTH); // reset depth buffer, good idea to set to GL_MAX_DEPTH
 		UpdateMusicBuffer();
 		oamUpdate(&oamMain);

@@ -506,7 +506,6 @@ void ProcessObjects() {
 	// set up the camera
 	SetupCameraMatrix();
 	
-	
 	// do rendering, now
 	currObject = firstObject.next;
 	while (currObject != NULL) {

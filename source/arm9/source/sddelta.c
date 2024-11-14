@@ -15,16 +15,17 @@ bool deltaTimeEngine;
 
 #ifndef _NOTDS
 void InitDeltaTime() {
-	timerStart(2, ClockDivider_1024, 0, NULL);
-	timerElapsed(2);
+	timerStart(1, ClockDivider_1024, 0, NULL);
+	timerElapsed(1);
 }
 
 void UpdateDeltaTime() {
-	deltaTime = timerElapsed(2);
+	deltaTime = timerElapsed(1);
 	deltaTime = deltaTime / 8;
 	deltaTime = Min(deltaTime, 409);
 }
 
+// TODO: needs to be updated to get calico's timer!
 void StartBenchmark() {
 	timerStart(1, ClockDivider_64, 0, NULL);
 }

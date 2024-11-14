@@ -294,7 +294,7 @@ int LoadModelAsync(char* input, void (*callBack)(void* data, Model* model), void
 	cbd->texDir = malloc(strlen(input) + 1);
 	strcpy(cbd->texDir, input);
 
-	return fread_Async((void*)retValue, fsize, 1, f, LoadModelAsyncCallback, cbd);
+	return fread_Async((void*)retValue, fsize, 1, f, 0, LoadModelAsyncCallback, cbd);
 }
 
 void LoadTextureFromQueue();
@@ -354,7 +354,7 @@ void LoadTextureFromQueue() {
 	Texture* newTex = (Texture*)malloc(fsize);
 	firstTextureQueue->f = f;
 	firstTextureQueue->tex = newTex;
-	fread_Async(newTex, fsize, 1, f, TextureAsyncCallback, firstTextureQueue);
+	fread_Async(newTex, fsize, 1, f, 0, TextureAsyncCallback, firstTextureQueue);
 }
 
 void LoadTextureAsync(char* input, bool upload, void (*callBack)(void* data, Texture* texture), void* callBackData) {
@@ -993,6 +993,7 @@ void GetMatrixLengths(m4x4* input, Vec3* output) {
 }
 
 void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator) {
+	//threadSleep(1000000);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
 	// ensure materials are valid...
@@ -1000,6 +1001,7 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
+	while (GFX_STATUS & (1 << 14));
 	// a little silly, but lets push until the end of the matrix, then store our base matrix in the last bone we would use.
 	const int lastBone = Min(31, model->skeletonCount) - 1;
 	for (int i = 0; i <= lastBone; ++i) {
@@ -1019,6 +1021,12 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 
 	// hardware AABB test
 	if (!BoxTest(model->boundsMin.x, model->boundsMin.y, model->boundsMin.z, model->boundsMax.x - model->boundsMin.x, model->boundsMax.y - model->boundsMin.y, model->boundsMax.z - model->boundsMin.z)) {
+		if (31 > model->skeletonCount) {
+			glPopMatrix(model->skeletonCount);
+		}
+		else {
+			glPopMatrix(31);
+		}
 		return;
 	}
 
@@ -1049,12 +1057,14 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 		glMultMatrix4x4(&animator->items[i].matrix);
 		glStoreMatrix(i);
 	}
-	for (int i = 0; i < lastBone + 1; ++i) {
+
+	for (int i = 0; i <= lastBone; ++i) {
 		// apply inverse matrices now
 		glRestoreMatrix(i);
 		glMultMatrix4x4(&model->skeleton[i].inverseMatrix);
 		glStoreMatrix(i);
 	}
+
 	// if a mesh has > 31 bones, then we need to set up the basic matrix too
 	m4x4 matrix;
 	if (model->skeletonCount > 31) {
@@ -1142,7 +1152,6 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 			}
 		}
 	}
-	glPopMatrix(1);
 	if (31 > model->skeletonCount) {
 		glPopMatrix(model->skeletonCount);
 	} else {
@@ -2090,7 +2099,7 @@ int LoadAnimationAsync(char* input, void (*callBack)(void* data, Animation* anim
 	acd->anim = retValue;
 	acd->callBack = callBack;
 	acd->callBackData = callBackData;
-	return fread_Async(retValue, fsize, 1, f, LoadAnimationAsyncCallback, acd);
+	return fread_Async(retValue, fsize, 1, f, 0, LoadAnimationAsyncCallback, acd);
 }
 
 Animator *CreateAnimator(Model *referenceModel) {
@@ -2521,7 +2530,7 @@ int LoadSpriteAsync(char* input, bool sub, bool upload, void (*callBack)(void* d
 	scd->upload = upload;
 	scd->f = f;
 
-	return fread_Async(newSprite, fsize, 1, f, LoadSpriteAsyncCallback, scd);
+	return fread_Async(newSprite, fsize, 1, f, 0, LoadSpriteAsyncCallback, scd);
 }
 
 void UnloadSprite(Sprite* input) {

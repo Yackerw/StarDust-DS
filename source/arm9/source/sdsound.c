@@ -51,6 +51,8 @@ char musicBuffer[30720];
 int musicBufferReadOffset = 0;
 int musicBufferOffset = 0;
 
+Mutex musicMutex;
+
 void MusicCallback(int length, char* dest) {
 	memcpy(dest, &musicBuffer[musicBufferOffset], length * currMusic->bytesPerSample);
 	musicBufferOffset += length * currMusic->bytesPerSample;
@@ -82,9 +84,11 @@ void MusicRead(int length, char* dest) {
 }
 
 void UpdateMusicBuffer() {
+	mutexLock(&musicMutex);
 	int startRead = musicBufferReadOffset;
 	int endRead = musicBufferOffset;
 	if (startRead == endRead) {
+		mutexUnlock(&musicMutex);
 		return;
 	}
 	int lastSample = 30720;
@@ -102,6 +106,7 @@ void UpdateMusicBuffer() {
 		MusicRead(endRead - startRead, &musicBuffer[startRead]);
 	}
 	musicBufferReadOffset = musicBufferOffset;
+	mutexUnlock(&musicMutex);
 }
 
 void MusicTimerCallback() {
@@ -214,7 +219,7 @@ void PlayMusic(char* filedir, int offset) {
 }
 
 void InitSound() {
-	soundEnable();
+	
 }
 
 void StopMusic() {
@@ -412,7 +417,7 @@ int LoadWavAsync(char* input, void (*callBack)(void* data, SoundEffect* sound), 
 	awd->callBackData = callBackData;
 	awd->se = audioInfo;
 
-	return fread_Async(audioInfo->samples, wavHeader.dataSize, 1, f, LoadWavAsyncCallback, awd);
+	return fread_Async(audioInfo->samples, wavHeader.dataSize, 1, f, 0, LoadWavAsyncCallback, awd);
 }
 
 #ifdef _WIN32
