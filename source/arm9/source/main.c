@@ -10,6 +10,7 @@
 #include "sddelta.h"
 #include "sdsound.h"
 #include "sdfile.h"
+#include "sdinput.h"
 
 #ifdef _WIN32
 
@@ -31,24 +32,6 @@ char* LoadShaderInclude(char* includePath) {
 	return retValue;
 }
 
-
-u16 WindowsInputCallback() {
-	u16 retValue = 0;
-	retValue |= GetKey("Z"[0]);
-	retValue |= GetKey("X"[0]) << 1;
-	retValue |= GetKey(KEYB_ENTER) << 2;
-	retValue |= GetKey(KEYB_RSHIFT) << 3;
-	retValue |= GetKey(KEYB_RIGHT) << 4;
-	retValue |= GetKey(KEYB_LEFT) << 5;
-	retValue |= GetKey(KEYB_UP) << 6;
-	retValue |= GetKey(KEYB_DOWN) << 7;
-	retValue |= GetKey("W"[0]) << 8;
-	retValue |= GetKey("Q"[0]) << 9;
-	retValue |= GetKey("C"[0]) << 10;
-	retValue |= GetKey("V"[0]) << 11;
-	return retValue;
-}
-
 void WindowsInitialization() {
 	shaderIncludeCallback = LoadShaderInclude;
 	InitializeGraphics();
@@ -56,7 +39,6 @@ void WindowsInitialization() {
 	defaultShader = LoadShader("shaders/default.vert", "shaders/default.frag");
 	defaultRiggedShader = LoadShader("shaders/defaultRigged.vert", "shaders/default.frag");
 	defaultSpriteShader = LoadShader("shaders/defaultSprite.vert", "shaders/defaultSprite.frag");
-	keysCallback = WindowsInputCallback;
 }
 
 #endif
@@ -116,7 +98,7 @@ int main() {
 
 	while (1) {
 		UpdateDeltaTime();
-		scanKeys();
+		UpdateInput();
 		
 		ProcessObjects();
 

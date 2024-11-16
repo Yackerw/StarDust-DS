@@ -1,3 +1,5 @@
+#ifndef WINDOW
+#define WINDOW
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -26,10 +28,17 @@ void PollWindowEvents();
 
 void SwapWindowBuffers();
 
-bool GetKey(int key);
+bool GetKeyPC(int key);
+
+bool GetMouseButtonPC(int button);
+
+int GetMouseXPC();
+
+int GetMouseYPC();
 
 void UpdateViewport(int width, int height);
 
 void ClearDepth();
 
 void ClearColor();
+#endif

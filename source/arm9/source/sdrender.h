@@ -188,6 +188,8 @@ typedef struct {
 
 extern Texture startTexture;
 
+extern bool touch3D;
+
 void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, void (*asyncCallback)(void* data), void* asyncCallbackData);
 
 Model *LoadModel(char *input);
@@ -268,5 +270,8 @@ void FinalizeSprites();
 void SetBackgroundTile(int x, int y, int tileId);
 
 void RenderTransparentModels();
+
+void Set3DOnTop();
+void Set3DOnBottom();
 
 #endif

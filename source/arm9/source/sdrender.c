@@ -41,6 +41,8 @@ int modelDrawCallAllocated;
 
 Vec3 cameraRecentering;
 
+bool touch3D = false;
+
 #ifdef _WIN32
 Shader *defaultShader;
 Shader *defaultRiggedShader;
@@ -2708,7 +2710,7 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	drawMaterial.transparent = true;
 	Mesh *spriteModel = calloc(sizeof(Mesh), 1);
 	SetSubmeshCount(spriteModel, 1);
-	Vec2 UVs[] = { {0, 0}, {1, 0}, {1, 1}, {0, 1} };
+	Vec2f UVs[] = { {0, 0}, {1, 0}, {1, 1}, {0, 1} };
 	SetMeshUVs(spriteModel, UVs, 4);
 	int triangles[] = { 0, 1, 2, 2, 3, 0 };
 	SetSubmeshTriangles(spriteModel, 0, triangles, 6);
@@ -2716,12 +2718,12 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	float width = (sprite->sprite->width / 256.0f) * divisor;
 	float height = (sprite->sprite->height / 192.0f) * divisorY;
 	if (sprite->scaled) {
-		width *= sprite->xScale;
-		height *= sprite->yScale;
+		width *= f32tofloat(sprite->xScale);
+		height *= f32tofloat(sprite->yScale);
 	}
-	Vec3 positions[] = { {realDrawPosX, realDrawPosY, 0}, {realDrawPosX + width, realDrawPosY, 0}, {realDrawPosX + width, realDrawPosY-height, 0}, {realDrawPosX, realDrawPosY-height, 0} };
+	Vec3f positions[] = { {realDrawPosX, realDrawPosY, 0}, {realDrawPosX + width, realDrawPosY, 0}, {realDrawPosX + width, realDrawPosY-height, 0}, {realDrawPosX, realDrawPosY-height, 0} };
 	if (sprite->flipY) {
-		Vec3 tmp[4];
+		Vec3f tmp[4];
 		for (int i = 0; i < 4; ++i) {
 			tmp[i] = positions[i];
 		}
@@ -2731,7 +2733,7 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 		positions[3].y = tmp[1].y;
 	}
 	if (sprite->flipX) {
-		Vec3 tmp[4];
+		Vec3f tmp[4];
 		for (int i = 0; i < 4; ++i) {
 			tmp[i] = positions[i];
 		}
@@ -2778,7 +2780,7 @@ void RenderBackground() {
 	SetSubmeshTriangles(bgModel, 0, tris, 32 * 32 * 6);
 	free(tris);
 
-	Vec2 *UVs = malloc(sizeof(Vec2) * 32 * 32 * 4);
+	Vec2f *UVs = malloc(sizeof(Vec2f) * 32 * 32 * 4);
 	float eightEquivX = 8.0f / BGTexture->width;
 	float eightEquivY = 8.0f / BGTexture->height;
 	int xWidth = BGTexture->width / 8;
@@ -2800,7 +2802,7 @@ void RenderBackground() {
 	SetMeshUVs(bgModel, UVs, 32 * 32 * 4);
 	free(UVs);
 
-	Vec3 *verts = malloc(sizeof(Vec3) * 32 * 32 * 4);
+	Vec3f *verts = malloc(sizeof(Vec3f) * 32 * 32 * 4);
 	eightEquivX = 8.0f / 256.0f;
 	eightEquivY = 8.0f / 192.0f;
 	for (int i = 0; i < 32; ++i) {
@@ -2839,11 +2841,11 @@ void RenderBottomScreen() {
 	SpriteDrawCall tempDraw;
 	Sprite tempSprite;
 	tempSprite.nativeSprite = subScreenTexture->texture;
-	tempDraw.x = -64.0f;
-	tempDraw.y = 48.0f;
+	tempDraw.x = -64;
+	tempDraw.y = 48;
 	tempDraw.scaled = true;
-	tempDraw.xScale = 0.25f;
-	tempDraw.yScale = 0.25f;
+	tempDraw.xScale = 0.25f*4096;
+	tempDraw.yScale = 0.25f*4096;
 	tempDraw.spriteAlignX = SpriteAlignRight;
 	tempDraw.spriteAlignY = SpriteAlignBottom;
 	tempSprite.sub = false;
@@ -3023,4 +3025,18 @@ bool QueueAnimation(Animator* animator, Animation* animation, f32 lerpTime) {
 void DestroyAnimator(Animator* animator) {
 	free(animator->items);
 	free(animator);
+}
+
+void Set3DOnTop() {
+	touch3D = false;
+#ifndef _NOTDS
+	lcdMainOnTop();
+#endif
+}
+
+void Set3DOnBottom() {
+	touch3D = true;
+#ifndef _NOTDS
+	lcdMainOnBottom();
+#endif
 }

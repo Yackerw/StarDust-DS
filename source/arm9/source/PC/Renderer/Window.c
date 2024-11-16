@@ -83,8 +83,24 @@ void SwapWindowBuffers() {
 	ClearColor();
 }
 
-bool GetKey(int key) {
+bool GetKeyPC(int key) {
 	return glfwGetKey(mWindow, key);
+}
+
+bool GetMouseButtonPC(int button) {
+	return glfwGetMouseButton(mWindow, button);
+}
+
+int GetMouseXPC() {
+	double mouseX, mouseY;
+	glfwGetCursorPos(mWindow, &mouseX, &mouseY);
+	return mouseX;
+}
+
+int GetMouseYPC() {
+	double mouseX, mouseY;
+	glfwGetCursorPos(mWindow, &mouseX, &mouseY);
+	return mouseY;
 }
 
 void UpdateViewport(int width, int height) {
