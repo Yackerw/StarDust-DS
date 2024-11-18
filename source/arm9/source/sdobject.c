@@ -5,6 +5,7 @@
 #include <nds.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include "sdsound.h"
 
 Object firstObject;
 
@@ -442,13 +443,15 @@ int GetObjectsOfType(int type, Object **out, int maxObjects) {
 	return currIdx;
 }
 
+bool multipassSecondaryBank = false;
+
 void ProcessObjects() {
 	// update networking before everything else
 	if (defaultNetInstance != NULL) {
 		UpdateNetworking(defaultNetInstance, deltaTime);
 	}
 
-	Object *currObject = firstObject.next;
+	Object* currObject = firstObject.next;
 	while (currObject != NULL) {
 		// TODO; functions
 		if (updateFuncs[currObject->objectType] != NULL && currObject->active) {
@@ -463,7 +466,8 @@ void ProcessObjects() {
 				stepVelocity.y = mulf32(currObject->velocity.y / 2, deltaTime);
 				stepVelocity.z = mulf32(currObject->velocity.z / 2, deltaTime);
 
-			} else {
+			}
+			else {
 				stepVelocity.x = currObject->velocity.x / 2;
 				stepVelocity.y = currObject->velocity.y / 2;
 				stepVelocity.z = currObject->velocity.z / 2;
@@ -472,10 +476,10 @@ void ProcessObjects() {
 				Vec3Addition(&stepVelocity, &currObject->position, &currObject->position);
 				if (currObject->sphereCol != NULL) {
 					// iterate over all objects and get mesh colliders
-					Object *colObject = firstObject.next;
+					Object* colObject = firstObject.next;
 					while (colObject != NULL) {
 						if (colObject != currObject) {
-							if (colObject->solid && layerCollision[currObject->layer + (colObject->layer*32)]) {
+							if (colObject->solid && layerCollision[currObject->layer + (colObject->layer * 32)]) {
 								if (colObject->meshCol != NULL) {
 									SphereObjOnMeshObj(currObject->sphereCol, colObject, currObject);
 								}
@@ -489,7 +493,7 @@ void ProcessObjects() {
 						}
 						colObject = colObject->next;
 					}
-					
+
 				}
 			}
 		}
@@ -498,17 +502,7 @@ void ProcessObjects() {
 	//late update
 	currObject = firstObject.next;
 	while (currObject != NULL) {
-		if (lateUpdateFuncs[currObject->objectType] != NULL && currObject->active) {
-			lateUpdateFuncs[currObject->objectType](currObject);
-		}
-		currObject = currObject->next;
-	}
-	// set up the camera
-	SetupCameraMatrix();
-	
-	// do rendering, now
-	currObject = firstObject.next;
-	while (currObject != NULL) {
+		// update animators before late update procs so late updaters can do what they want with it
 		if (currObject->mesh != NULL && !currObject->culled) {
 			if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
 				if (deltaTimeEngine) {
@@ -516,15 +510,134 @@ void ProcessObjects() {
 					currObject->animator->speed = mulf32(tmp * 60, deltaTime);
 					UpdateAnimator(currObject->animator, currObject->mesh);
 					currObject->animator->speed = tmp;
-				} else {
+				}
+				else {
 					UpdateAnimator(currObject->animator, currObject->mesh);
 				}
+			}
+		}
+		if (lateUpdateFuncs[currObject->objectType] != NULL && currObject->active) {
+			lateUpdateFuncs[currObject->objectType](currObject);
+		}
+		currObject = currObject->next;
+	}
+
+	// do rendering, now
+#ifndef _NOTDS
+	if (!multipassRendering) {
+		// set up the camera
+		SetupCameraMatrix();
+		// disable capture
+		REG_DISPCAPCNT = 0;
+		currObject = firstObject.next;
+		while (currObject != NULL) {
+			if (currObject->mesh != NULL && !currObject->culled) {
+				if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
+					RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
+				}
+				else {
+					RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
+				}
+			}
+			currObject = currObject->next;
+		}
+		FinalizeSprites();
+		bgUpdate();
+		glFlush(0);
+		threadWaitForVBlank();
+		// update music
+		UpdateMusicBuffer();
+	}
+	else {
+		// we have to start by rendering the left half, then the right half
+		SetupCameraMatrixPartial(0, 0, 128, 192);
+		int targetBank = 3;
+		if (multipassSecondaryBank) {
+			targetBank = 1;
+		}
+		// okay, now we render twice regularly
+		for (int i = 0; i < 2; ++i) {
+			currObject = firstObject.next;
+			while (currObject != NULL) {
+				if (currObject->mesh != NULL && !currObject->culled) {
+					if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
+						RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
+					}
+					else {
+						RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
+					}
+				}
+				currObject = currObject->next;
+			}
+			glFlush(0);
+			threadWaitForVBlank();
+			// update music
+			UpdateMusicBuffer();
+			if (i == 0) {
+				REG_DISPCAPCNT = (targetBank << 16) | (3 << 20) | (1 << 24) | (1 << 31); // applies to next *rendered* frame; i.e. 2 glflush from now, the next glflush gets rendered. so we have to
+				// backtrack in time and use the settings for the previous frame
+				// change the display to display from VRAM, bank B or D depending
+				REG_DISPCNT = (REG_DISPCNT & ~((3 << 16) | (3 << 18) | 7)) | (2 << 16) | (targetBank << 18) | 3 | (1 << 8) | (1 << 11);
+				SetupCameraMatrixPartial(128, 0, 128, 192); // applies to next glflush
+				bgSetPriority(3, 3); // next rendered frame; shouldn't matter since we display from vram, but i'll leave it documented here for the next part
+				bgSetPriority(0, 0);
+				vramSetBankD(VRAM_D_LCD); // next rendered frame
+				vramSetBankB(VRAM_B_LCD);
+			}
+			if (i == 1) {
+				// set up the new DISPCAPCNT to capture and render final!
+				// store to VRAM bank x, capture 256x192 pixels, capture 3D output, enable mix, set mixA to 31, set mixB to 31, and enable capture
+				REG_DISPCAPCNT = (targetBank << 16) | (3 << 20) | (1 << 24) | (2 << 29) | (0x1F << 0) | (0x1F << 8) | (1 << 31);
+				// change the display to display video, selecting VRAM target for capture mixing
+				REG_DISPCNT = (REG_DISPCNT & ~((3 << 16) | (3 << 18) | 7)) | (1 << 16) | (targetBank << 18) | 3 | (1 << 8) | (1 << 11);
+				// applies to next *rendered* frame; i.e. frame we just set up to be rendered
+				if (multipassSecondaryBank) {
+					vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
+				}
+				else {
+					vramSetBankB(VRAM_B_MAIN_BG_0x06000000);
+				}
+				// set up bg to render over us
+				bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+				bgSetPriority(3, 0);
+				bgSetPriority(0, 3);
+				// sprites, done!
+				FinalizeSprites();
+				bgUpdate();
+			}
+		}
+		multipassSecondaryBank = !multipassSecondaryBank;
+	}
+
+	glClearDepth(GL_MAX_DEPTH); // reset depth buffer, good idea to set to GL_MAX_DEPTH
+#else
+	// set up the camera
+	SetupCameraMatrix();
+	currObject = firstObject.next;
+	while (currObject != NULL) {
+		if (currObject->mesh != NULL && !currObject->culled) {
+			if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
 				RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
-			} else {
+			}
+			else {
 				RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
 			}
 		}
-		Object *tmpObj = currObject;
+		currObject = currObject->next;
+	}
+	FinalizeSprites();
+	// update music
+	UpdateMusicBuffer();
+
+	// windows updates...
+	PollWindowEvents();
+	SwapWindowBuffers();
+	UpdateViewport(GetWindowWidth(), GetWindowHeight());
+#endif
+
+	currObject = firstObject.next;
+	while (currObject != NULL) {
+		Object* tmpObj = currObject;
 		currObject = currObject->next;
 		// also destroy object if relevant
 		if (tmpObj->destroy) {

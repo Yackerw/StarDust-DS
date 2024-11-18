@@ -14,6 +14,8 @@ typedef struct ObjectPtr ObjectPtr;
 
 typedef struct Object Object;
 
+enum ObjectMultipassTarget { MULTIPASS_FIRST, MULTIPASS_SECOND, MULTIPASS_BOTH };
+
 struct ObjectPtr {
 	Object* object;
 	ObjectPtr* prev;
@@ -40,6 +42,7 @@ struct Object {
 	bool trigger;
 	bool destroy;
 	bool active;
+	char multipassTarget;
 	Animator *animator;
 	unsigned int layer;
 	int netId;

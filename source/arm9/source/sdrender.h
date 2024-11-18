@@ -183,12 +183,17 @@ typedef struct {
 	unsigned char* image;
 	unsigned short* palette;
 	char* gfx;
-	void* nativeSprite;
+	union {
+		void* nativeSprite;
+		int DSResolution;
+	};
 } Sprite;
 
 extern Texture startTexture;
 
 extern bool touch3D;
+
+extern bool multipassRendering;
 
 void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, void (*asyncCallback)(void* data), void* asyncCallbackData);
 
@@ -245,6 +250,8 @@ void DestroyGeneratedModel(Model* m);
 
 void SetupCameraMatrix();
 
+void SetupCameraMatrixPartial(int x, int y, int width, int height);
+
 bool AABBInCamera(Vec3* min, Vec3* max, m4x4* transform);
 
 bool QueueAnimation(Animator* animator, Animation* animation, f32 lerpTime);
@@ -273,5 +280,10 @@ void RenderTransparentModels();
 
 void Set3DOnTop();
 void Set3DOnBottom();
+
+void Initialize3D(bool multipass, bool subBG);
+
+//void SaveLCD();
+//void RestoreLCD();
 
 #endif

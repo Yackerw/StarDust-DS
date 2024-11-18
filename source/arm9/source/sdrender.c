@@ -43,6 +43,8 @@ Vec3 cameraRecentering;
 
 bool touch3D = false;
 
+bool multipassRendering = false;
+
 #ifdef _WIN32
 Shader *defaultShader;
 Shader *defaultRiggedShader;
@@ -2427,10 +2429,28 @@ void InitializeSubBG() {
 #endif
 }
 
+#ifndef _NOTDS
+unsigned int spriteNativeResolutions[] = {
+	SpriteSize_8x8,
+	SpriteSize_16x16,
+	SpriteSize_32x32,
+	SpriteSize_64x64,
+	SpriteSize_16x8,
+	SpriteSize_32x8,
+	SpriteSize_32x16,
+	SpriteSize_64x32,
+	SpriteSize_8x16,
+	SpriteSize_8x32,
+	SpriteSize_16x32,
+	SpriteSize_32x64
+};
+#endif
+
 void UploadSprite(Sprite* input, bool sub, bool BG) {
 #ifndef _NOTDS
-	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->resolution, input->format);
-	float multiplier = input->format == 0 ? 0.5f : input->format == 1 ? 1.0f : 2.0f;
+	input->DSResolution = spriteNativeResolutions[(int)input->resolution];
+	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->DSResolution, input->format);
+	float multiplier = input->format == 1 ? 0.5f : input->format == 2 ? 1.0f : 2.0f;
 	dmaCopy(input->image, input->gfx, multiplier * (input->width * input->height));
 	input->paletteOffset = 15;
 	// TODO: 8 & 4 bit sprites
@@ -2630,6 +2650,53 @@ void RenderSpriteScaled(Sprite* sprite, int x, int y, bool flipX, bool flipY, f3
 }
 
 #ifndef _NOTDS
+
+int oamCount = 0;
+
+void oamSetSD(OamState* oam, int id, int x, int y, int priority,
+	int palette_alpha, SpriteSize size, SpriteColorFormat format,
+	const void* gfxOffset,
+	int affineIndex,
+	bool sizeDouble, bool hide, bool hflip, bool vflip, bool mosaic) {
+	SpriteEntry s;
+
+	if (hide) {
+		s.attribute[0] = ATTR0_DISABLED;
+		return;
+	}
+
+	s.shape = SPRITE_SIZE_SHAPE(size);
+	s.size = SPRITE_SIZE_SIZE(size);
+	s.x = x;
+	s.y = y;
+	s.palette = palette_alpha;
+	s.priority = priority;
+	s.hFlip = hflip;
+	s.vFlip = vflip;
+	s.isMosaic = mosaic;
+	s.gfxIndex = oamGfxPtrToOffset(oam, gfxOffset);
+
+
+	if (affineIndex >= 0 && affineIndex < 32) {
+		s.rotationIndex = affineIndex;
+		s.isSizeDouble = sizeDouble;
+		s.isRotateScale = true;
+	}
+	else {
+		s.isSizeDouble = false;
+		s.isRotateScale = false;
+	}
+
+	if (format != SpriteColorFormat_Bmp) {
+		s.colorMode = format;
+	}
+	else {
+		s.blendMode = format;
+		s.colorMode = 0;
+	}
+	oam->oamMemory[id] = s;
+}
+
 void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	int realDrawPosX = 0;
 	int realDrawPosY = 0;
@@ -2651,24 +2718,26 @@ void RenderSpriteInternal(SpriteDrawCall* sprite) {
 	else if (sprite->spriteAlignY == SpriteAlignBottom) {
 		realDrawPosY = sprite->y + 192;
 	}
+	// TODO: this can only draw one sprite, it'll immediately overwrite future ones...
 	if (sprite->sprite->sub) {
-		int affineId = 0;
+		int affineId = -1;
 		if (sprite->scaled && spriteMatrixId < 32) {
 			oamAffineTransformation(&oamSub, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
 			affineId = spriteMatrixId;
 			++spriteMatrixId;
 		}
-		oamSet(&oamSub, 0, realDrawPosX, realDrawPosY, 0, sprite->sprite->paletteOffset, sprite->sprite->resolution, sprite->sprite->format, sprite->sprite->gfx, affineId, false, false, sprite->flipX, sprite->flipY, false);
+		oamSetSD(&oamSub, oamCount, realDrawPosX, realDrawPosY, 0, sprite->sprite->paletteOffset, sprite->sprite->DSResolution, sprite->sprite->format, sprite->sprite->gfx, affineId, true, false, sprite->flipX, sprite->flipY, false);
 	}
 	else {
-		int affineId = 0;
+		int affineId = -1;
 		if (sprite->scaled && spriteMatrixId < 32) {
-			oamAffineTransformation(&oamSub, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
+			oamAffineTransformation(&oamMain, spriteMatrixId, sprite->xScale, 0, 0, sprite->yScale);
 			affineId = spriteMatrixId;
 			++spriteMatrixId;
 		}
-		oamSet(&oamMain, 0, realDrawPosX, realDrawPosY, 0, sprite->sprite->paletteOffset, sprite->sprite->resolution, sprite->sprite->format, sprite->sprite->gfx, affineId, false, false, sprite->flipX, sprite->flipY, false);
+		oamSetSD(&oamMain, oamCount, realDrawPosX, realDrawPosY, 0, sprite->sprite->paletteOffset, sprite->sprite->DSResolution, sprite->sprite->format, sprite->sprite->gfx, affineId, true, false, sprite->flipX, sprite->flipY, false);
 	}
+	++oamCount;
 }
 #else
 void RenderSpriteInternal(SpriteDrawCall* sprite) {
@@ -2862,14 +2931,15 @@ void FinalizeSprites() {
 #ifndef _NOTDS
 	oamClear(&oamMain, 0, 0);
 	oamClear(&oamSub, 0, 0);
+	oamCount = 0;
 #else
 	ClearDepth();
 #endif
-	spriteMatrixId = 1;
+	spriteMatrixId = 0;
 	for (int i = 0; i < mainSpriteCallCount; ++i) {
 		RenderSpriteInternal(&mainSpriteCalls[i]);
 	}
-	spriteMatrixId = 1;
+	spriteMatrixId = 0;
 #ifdef _NOTDS
 	UseRenderTexture(subScreenTexture);
 	if (BGTexture != NULL) {
@@ -2879,6 +2949,8 @@ void FinalizeSprites() {
 	else {
 		ClearColor();
 	}
+#else
+	oamCount = 0;
 #endif
 	for (int i = 0; i < subSpriteCallCount; ++i) {
 		RenderSpriteInternal(&subSpriteCalls[i]);
@@ -2889,6 +2961,10 @@ void FinalizeSprites() {
 #endif
 	mainSpriteCallCount = 0;
 	subSpriteCallCount = 0;
+#ifndef _NOTDS
+	oamUpdate(&oamMain);
+	oamUpdate(&oamSub);
+#endif
 }
 
 void SetBackgroundTile(int x, int y, int id) {
@@ -2931,8 +3007,61 @@ void SetupCameraMatrix() {
 	m4x4 trueCameraMatrix;
 	MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
 	glMultMatrix4x4(&trueCameraMatrix);
+
+	// set viewport to be size of screen
+	glViewport(0, 0, 255, 191);
+}
+
+void SetupCameraMatrixPartial(int x, int y, int width, int height) {
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	m4x4 screenAdjustMatrix = { 0 };
+	// offset target...note: don't need to multiply by 4096 for divf32! it'll convert to base-4096 post division for us, due to...well, 0.1/0.1 = 1.0
+	f32 oneMinusWidth = (4096 - divf32(width, 256)) * 2;
+	f32 oneMinusHeight = (4096 - divf32(height, 192)) * 2;
+	screenAdjustMatrix.m[12] = Lerp(oneMinusWidth, -oneMinusWidth, divf32(x, 256 - width));
+	screenAdjustMatrix.m[13] = Lerp(oneMinusHeight, -oneMinusHeight, divf32(y, 192 - height));
+	screenAdjustMatrix.m[0] = 4096;
+	screenAdjustMatrix.m[5] = 4096;
+	screenAdjustMatrix.m[10] = 4096;
+	screenAdjustMatrix.m[15] = 4096;
+	glMultMatrix4x4(&screenAdjustMatrix);
+#ifdef FLIP_X
+	m4x4 tmpMat;
+	MakeScaleMatrix(-4096, 4096, 4096, &tmpMat);
+	glMultMatrix4x4(&tmpMat);
+#endif
+	gluPerspectivef32(cameraFOV, divf32(width, height), cameraNear, cameraFar);
+	Vec3 cameraPositionMod;
+	cameraPositionMod.x = cameraPosition.x % 4096;
+	cameraPositionMod.y = cameraPosition.y % 4096;
+	cameraPositionMod.z = cameraPosition.z % 4096;
+	cameraRecentering.x = cameraPosition.x - cameraPositionMod.x;
+	cameraRecentering.y = cameraPosition.y - cameraPositionMod.y;
+	cameraRecentering.z = cameraPosition.z - cameraPositionMod.z;
+	Vec3 camPosInverse;
+	camPosInverse.x = -cameraPositionMod.x;
+	camPosInverse.y = -cameraPositionMod.y;
+	camPosInverse.z = -cameraPositionMod.z;
+	m4x4 camTransform;
+	MakeTranslationMatrix(camPosInverse.x, camPosInverse.y, camPosInverse.z, &camTransform);
+	// rotation
+	Quaternion inverseCamRot;
+	QuaternionInverse(&cameraRotation, &inverseCamRot);
+	m4x4 camRotation;
+	MakeRotationMatrix(&inverseCamRot, &camRotation);
+	CombineMatrices(&camRotation, &camTransform, &cameraMatrix);
+	m4x4 trueCameraMatrix;
+	MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
+	glMultMatrix4x4(&trueCameraMatrix);
+
+	glViewport(x, y, (x+width)-1, (y+height)-1);
 }
 #else
+
+void SetupCameraMatrixPartial(int x, int y, int width, int height) {
+	// ? not used for PC!
+}
 
 void SetupCameraMatrix() {
 	m4x4 perspectiveMatrix;
@@ -3038,5 +3167,88 @@ void Set3DOnBottom() {
 	touch3D = true;
 #ifndef _NOTDS
 	lcdMainOnBottom();
+#endif
+}
+
+unsigned short* storageTexture;
+
+void Initialize3D(bool multipass, bool subBGFull) {
+#ifndef _NOTDS
+	// initialize gl engine
+	glInit();
+
+	videoSetMode(MODE_0_3D);
+	videoSetModeSub(MODE_0_2D);
+
+	// AA because why not
+	glEnable(GL_ANTIALIAS);
+
+	glEnable(GL_TEXTURE_2D);
+
+	glEnable(GL_BLEND);
+
+	vramSetBankA(VRAM_A_TEXTURE);
+	vramSetBankB(VRAM_B_TEXTURE);
+	if (subBGFull) {
+		vramSetBankC(VRAM_C_SUB_BG);
+	}
+	else {
+		if (multipass) {
+			// if we're in multipass, B will be used for the multipass, so set C to texture slot 1
+			vramSetBankC(VRAM_C_TEXTURE_SLOT1);
+		}
+		else {
+			vramSetBankC(VRAM_C_TEXTURE);
+		}
+		vramSetBankH(VRAM_H_SUB_BG);
+	}
+	if (subBGFull && !multipass) {
+		vramSetBankD(VRAM_D_TEXTURE_SLOT2);
+	}
+	else if (multipass) {
+		vramSetBankD(VRAM_D_LCD);
+		videoSetMode(MODE_3_3D);
+		vramSetBankB(VRAM_B_LCD);
+		storageTexture = (unsigned short*)malloc(sizeof(unsigned short) * 256 * 192);
+		memset(storageTexture, 0xFFFFFFFF, sizeof(unsigned short) * 256 * 192);
+	}
+	else {
+		vramSetBankD(VRAM_D_TEXTURE);
+	}
+	vramSetBankE(VRAM_E_MAIN_SPRITE);
+	vramSetBankF(VRAM_F_TEX_PALETTE_SLOT0);
+	vramSetBankG(VRAM_G_TEX_PALETTE_SLOT5);
+	vramSetBankI(VRAM_I_SUB_SPRITE);
+	glMaterialShinyness();
+	oamInit(&oamMain, SpriteMapping_Bmp_1D_128, false);
+	oamInit(&oamSub, SpriteMapping_Bmp_1D_128, false);
+
+	consoleDemoInit();
+#endif
+	multipassRendering = multipass;
+}
+
+// functions only used for debugging multipass...
+void SaveLCD() {
+#ifndef _NOTDS
+	// dma copying from the LCD storage to our temporary texture for multipass
+	dmaBusyWait(1);
+	//REG_DMAxCNT_H(2) = 0; // disable the DMA...
+	dmaCopy(VRAM_D, storageTexture, sizeof(unsigned short) * 256 * 192);
+	//dmaCopyWordsAsynch(1, VRAM_D, storageTexture, sizeof(unsigned short) * 256 * 192);
+	dmaBusyWait(1);
+	//DC_FlushRange(storageTexture, sizeof(unsigned short) * 256 * 192);
+#endif
+}
+
+void RestoreLCD() {
+#ifndef _NOTDS
+	//dmaBusyWait(1);
+	//dmaBusyWait(2);
+	// now we have to DMA copy to the screen! no built in function gives us enough control, so write the registers ourselves...
+	REG_DMAxSAD(2) = (unsigned int)storageTexture;
+	REG_DMAxDAD(2) = 0x04000068;
+	REG_DMAxCNT_L(2) = 4; // copy 8 pixels per copy; 4 int32s
+	REG_DMAxCNT_H(2) = DMA_MODE_DST(DmaMode_Fixed) | DMA_MODE_SRC(DmaMode_Increment) | DMA_UNIT_32 | DMA_TIMING(DmaTiming_MemDisp) | DMA_START | DMA_MODE_REPEAT; // has to be set to repeat so it continues outputting it
 #endif
 }
