@@ -524,6 +524,8 @@ void ProcessObjects() {
 
 	// do rendering, now
 #ifndef _NOTDS
+	glClearPolyID(0x1F);
+	glClearColor(0, 0, 0, 0x1F);
 	if (!multipassRendering) {
 		// set up the camera
 		SetupCameraMatrix();
@@ -533,17 +535,18 @@ void ProcessObjects() {
 		while (currObject != NULL) {
 			if (currObject->mesh != NULL && !currObject->culled) {
 				if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
-					RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
+					RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator, currObject->renderPriority);
 				}
 				else {
-					RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
+					RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->renderPriority);
 				}
 			}
 			currObject = currObject->next;
 		}
+		RenderTransparentModels();
 		FinalizeSprites();
 		bgUpdate();
-		glFlush(0);
+		glFlush(GL_TRANS_MANUALSORT);
 		threadWaitForVBlank();
 		// update music
 		UpdateMusicBuffer();
@@ -561,15 +564,16 @@ void ProcessObjects() {
 			while (currObject != NULL) {
 				if (currObject->mesh != NULL && !currObject->culled) {
 					if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
-						RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
+						RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator, currObject->renderPriority);
 					}
 					else {
-						RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
+						RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->renderPriority);
 					}
 				}
 				currObject = currObject->next;
 			}
-			glFlush(0);
+			RenderTransparentModels();
+			glFlush(GL_TRANS_MANUALSORT);
 			threadWaitForVBlank();
 			// update music
 			UpdateMusicBuffer();
@@ -607,7 +611,7 @@ void ProcessObjects() {
 		multipassSecondaryBank = !multipassSecondaryBank;
 	}
 
-	glClearDepth(GL_MAX_DEPTH); // reset depth buffer, good idea to set to GL_MAX_DEPTH
+	glClearDepth(GL_MAX_DEPTH); // this technically only needs to be initialized once, but whatever, idc
 #else
 	// set up the camera
 	SetupCameraMatrix();
@@ -615,14 +619,16 @@ void ProcessObjects() {
 	while (currObject != NULL) {
 		if (currObject->mesh != NULL && !currObject->culled) {
 			if (currObject->mesh->skeletonCount != 0 && currObject->animator != NULL) {
-				RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator);
+				RenderModelRigged(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->animator, currObject->renderPriority);
 			}
 			else {
-				RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL);
+				RenderModel(currObject->mesh, &currObject->position, &currObject->scale, &currObject->rotation, NULL, currObject->renderPriority);
 			}
 		}
 		currObject = currObject->next;
 	}
+	// finally, render transparent models
+	RenderTransparentModels();
 	FinalizeSprites();
 	// update music
 	UpdateMusicBuffer();
@@ -642,11 +648,6 @@ void ProcessObjects() {
 			DestroyObjectInternal(tmpObj);
 		}
 	}
-
-	// finally, render transparent models
-#ifdef _NOTDS
-	RenderTransparentModels();
-#endif
 }
 
 int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision)(Object*, CollisionHit*), void(*lateUpdate)(Object*), void(*destroy)(Object*), void(*networkCreateSend)(Object*, void**, int*),

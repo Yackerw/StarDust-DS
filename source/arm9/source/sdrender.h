@@ -30,6 +30,12 @@ enum SpriteRenderPositionY {SpriteAlignTop, SpriteAlignBottom = 2};
 
 enum VertexHeaderBitflags {VTX_MATERIAL_CHANGE = 1, VTX_STRIPS = 2, VTX_QUAD = 4};
 
+enum StencilBitFlags {STENCIL_VALUE = 0x1F, STENCIL_SHADOW_COMPARE_WRITE = 0x20, STENCIL_FORCE_OPAQUE_ORDERING = 0x40};
+
+enum MaterialCulling {NO_CULLING, BACK_CULLING, FRONT_CULLING};
+
+#define RENDER_PRIO_RESERVED 0x80000000
+
 typedef struct {
 	v16 x;
 	v16 y;
@@ -159,10 +165,10 @@ struct SDMaterial {
 	Vec3i color;
 	int alpha;
 	Texture *texture;
-	bool backFaceCulling;
+	unsigned char faceCulling;
 	bool lit;
 	char specular;
-	char padding;
+	unsigned char stencilPack;
 	f32 texOffsX;
 	f32 texOffsY;
 	f32 texScaleX;
@@ -208,7 +214,7 @@ Model* FreeModelKeepCache(Model* model);
 
 void UpdateModel(Model* model);
 
-void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats);
+void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, int renderPriority);
 
 void UploadTexture(Texture* input);
 
@@ -226,7 +232,7 @@ void SetLightColor(int color);
 
 void SetAmbientColor(int color);
 
-void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator);
+void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator, int renderPriority);
 
 void LoadAnimationFromRAM(Animation* anim);
 

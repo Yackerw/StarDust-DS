@@ -6,27 +6,43 @@
 #include "sdfile.h"
 #include <stdlib.h>
 #include <stdint.h>
+#ifdef _WIN32
+#include <glew.h>
+#endif
 
 typedef struct {
+#ifdef _NOTDS
 	Vec3 position;
 	m4x4 matrix;
 	int materialId;
 	SDMaterial subMat;
 	Animator* animator;
 	Model* model;
+	int renderPriority;
+#else
+	Vec3 position;
+	f32 relativeZ;
+	Vec3 scale;
+	Quaternion rotation;
+	SDMaterial* materials;
+	Animator* animator;
+	Model* model;
+	int renderPriority;
+	char hasShadow;
+#endif
 } ModelDrawCall;
 
 typedef struct {
 	Sprite* sprite;
-	int x;
-	int y;
-	int spriteAlignX;
-	int spriteAlignY;
+	short x;
+	short y;
+	char spriteAlignX;
+	char spriteAlignY;
 	bool flipX;
 	bool flipY;
 	bool scaled;
-	f32 xScale;
-	f32 yScale;
+	short xScale;
+	short yScale;
 } SpriteDrawCall;
 
 SpriteDrawCall mainSpriteCalls[128];
@@ -123,6 +139,46 @@ typedef struct {
 } AnimationCallbackData;
 
 TextureQueue* firstTextureQueue;
+
+int TransparentSortFunction(void const *aa, void const *ba) {
+	ModelDrawCall* a = (ModelDrawCall*)aa;
+	ModelDrawCall* b = (ModelDrawCall*)ba;
+	if (a->renderPriority != b->renderPriority) {
+		return a->renderPriority > b->renderPriority ? -1 : 1;
+	}
+#ifdef _NOTDS
+	// always prioritize a 0 shadow stencil over others in the same priority group
+	if ((a->subMat.stencilPack & (STENCIL_SHADOW_COMPARE_WRITE | STENCIL_VALUE)) == STENCIL_SHADOW_COMPARE_WRITE && a->subMat.stencilPack != b->subMat.stencilPack) {
+		return -1;
+	}
+	return a->position.z - b->position.z > 0 ? -1 : 1;
+#else
+	// initialize if the draw call is a shadow
+	if (a->hasShadow == 0) {
+		a->hasShadow = -1;
+		for (int i = 0; i < a->model->materialCount; ++i) {
+			if ((a->materials[i].stencilPack & (STENCIL_SHADOW_COMPARE_WRITE | STENCIL_VALUE)) == STENCIL_SHADOW_COMPARE_WRITE) {
+				a->hasShadow = 1;
+				break;
+			}
+		}
+	}
+	if (b->hasShadow == 0) {
+		b->hasShadow = -1;
+		for (int i = 0; i < a->model->materialCount; ++i) {
+			if ((b->materials[i].stencilPack & (STENCIL_SHADOW_COMPARE_WRITE | STENCIL_VALUE)) == STENCIL_SHADOW_COMPARE_WRITE) {
+				b->hasShadow = 1;
+				break;
+			}
+		}
+	}
+	// always prioritize a 0 shadow stencil over others in the same priority group
+	if (a->hasShadow == 1 && b->hasShadow != 1) {
+		return -1;
+	}
+	return a->relativeZ - b->relativeZ > 0 ? -1 : 1;
+#endif
+}
 
 void LoadModelTexturesCallback(void* data, Texture* texture) {
 	ModelTexturesCallbackData* mtcbd = (ModelTexturesCallbackData*)data;
@@ -929,13 +985,58 @@ void UpdateModel(Model* model) {
 }
 
 #ifndef _NOTDS
-void SetupMaterial(SDMaterial* mat, bool rigged) {
-	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(1);
-	if (mat->backFaceCulling) {
+
+void PosTest(short x, short y, short z) {
+	GFX_POS_TEST = VERTEX_PACK(x, y);
+	GFX_POS_TEST = z;
+	while ((GFX_STATUS & 1) != 0);
+}
+
+int PosTestWResult() {
+	return GFX_POS_RESULT[3];
+}
+
+void AppendDrawCall(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator, int renderPriority) {
+	if (modelDrawCallAllocated == 0) {
+		modelDrawCallAllocated = 32;
+		modelDrawCalls = (ModelDrawCall*)malloc(sizeof(ModelDrawCall) * 32);
+	}
+	// expand if we need more ram
+	if (modelDrawCallAllocated == modelDrawCallCount) {
+		modelDrawCallAllocated *= 1.5f;
+		modelDrawCalls = (ModelDrawCall*)realloc(modelDrawCalls, sizeof(ModelDrawCall) * modelDrawCallAllocated);
+	}
+	modelDrawCalls[modelDrawCallCount].position = position[0];
+	modelDrawCalls[modelDrawCallCount].scale = scale[0];
+	modelDrawCalls[modelDrawCallCount].rotation = rotation[0];
+	modelDrawCalls[modelDrawCallCount].materials = mats;
+	modelDrawCalls[modelDrawCallCount].animator = animator;
+	modelDrawCalls[modelDrawCallCount].renderPriority = renderPriority;
+	modelDrawCalls[modelDrawCallCount].model = model;
+	modelDrawCalls[modelDrawCallCount].hasShadow = 0;
+	// we don't need to pass in anything but 0s since we just want model origin anyways. this will *usually* be the center of the model given how the exporter works, but we may want to change this
+	// to the -offset defined in the model if we wanted to play it safe, albeit that'd cause issues if it fell out of range...
+	PosTest(0, 0, 0);
+	modelDrawCalls[modelDrawCallCount].relativeZ = PosTestWResult();
+	++modelDrawCallCount;
+}
+
+bool SetupMaterial(SDMaterial* mat, bool rigged) {
+	// alpha, stencil ID, stencil compare, don't omit polygons that intersect far plane
+	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(mat->stencilPack & STENCIL_VALUE) | (((mat->stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) ? (3 << 4) : 0) | (1 << 12);
+	bool isTransparent = mat->alpha < 31;
+	if (mat->faceCulling == BACK_CULLING) {
 #ifdef FLIP_X
 		flags |= POLY_CULL_FRONT;
 #else
 		flags |= POLY_CULL_BACK;
+#endif
+	}
+	else if (mat->faceCulling == FRONT_CULLING) {
+#ifdef FLIP_X
+		flags |= POLY_CULL_BACK;
+#else
+		flags |= POLY_CULL_FRONT;
 #endif
 	}
 	else {
@@ -973,38 +1074,17 @@ void SetupMaterial(SDMaterial* mat, bool rigged) {
 	if (currTex != NULL) {
 		GFX_TEX_FORMAT = currTex->textureWrite; // this is a minor optimization, but glBindTexture and glAssignColorTable accounted for about half the call time for material setup, and material setup needs to be called a lot.
 		GFX_PAL_FORMAT = currTex->paletteWrite;
+		isTransparent = isTransparent || currTex->type == GL_RGB32_A3 || currTex->type == GL_RGB8_A5;
 	}
 	else {
 		GFX_TEX_FORMAT = 0;
 		GFX_PAL_FORMAT = 0;
 	}
+
+	return isTransparent || (mat->stencilPack & STENCIL_FORCE_OPAQUE_ORDERING) != 0;
 }
 
-void GetMatrixLengths(m4x4* input, Vec3* output) {
-	f32 matLength;
-	long long tmpMat = (long long)input->m[0] * (long long)input->m[0];
-	tmpMat += (long long)input->m[4] * (long long)input->m[4];
-	tmpMat += (long long)input->m[8] * (long long)input->m[8];
-	matLength = tmpMat >> 12;
-	matLength = sqrtf32(matLength);
-	output->x = divf32(4096, matLength);
-
-	tmpMat = (long long)input->m[1] * (long long)input->m[1];
-	tmpMat += (long long)input->m[5] * (long long)input->m[5];
-	tmpMat += (long long)input->m[9] * (long long)input->m[9];
-	matLength = tmpMat >> 12;
-	matLength = sqrtf32(matLength);
-	output->y = divf32(4096, matLength);
-
-	tmpMat = (long long)input->m[2] * (long long)input->m[2];
-	tmpMat += (long long)input->m[6] * (long long)input->m[6];
-	tmpMat += (long long)input->m[10] * (long long)input->m[10];
-	matLength = tmpMat >> 12;
-	matLength = sqrtf32(matLength);
-	output->z = divf32(4096, matLength);
-}
-
-void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator) {
+void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator, int renderPriority) {
 	//threadSleep(1000000);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
@@ -1089,13 +1169,31 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 		matrix.m[7] = position->y;
 		matrix.m[11] = position->z;
 	}
+	bool skipTransparentOrOpaque = renderPriority == RENDER_PRIO_RESERVED;
+	bool transparentSkip = skipTransparentOrOpaque;
+	bool modelQueued = false;
 	if (model->NativeModel == NULL) {
 		int currBone = -1;
 		const int vertGroupCount = model->vertexGroupCount;
 		for (int i = 0; i < vertGroupCount; ++i) {
 			if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
-				SetupMaterial(&mats[currVertexGroup->material], true);
+				transparentSkip = skipTransparentOrOpaque;
+				if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+					transparentSkip = !skipTransparentOrOpaque;
+					if (renderPriority != RENDER_PRIO_RESERVED) {
+						if (!modelQueued) {
+							AppendDrawCall(model, position, scale, rotation, mats, animator, renderPriority);
+							modelQueued = true;
+						}
+						currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+						continue;
+					}
+				}
 				currBone = -1;
+			}
+			if (transparentSkip) {
+				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+				continue;
 			}
 			if (currVertexGroup->bitFlags & VTX_QUAD) {
 				if (currVertexGroup->bitFlags & VTX_STRIPS) {
@@ -1153,8 +1251,22 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 				SetupMaterial(&mats[i], true);
 			}
 			else {
-				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE)
-					SetupMaterial(&mats[currVertexGroup->material], true);
+				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
+					transparentSkip = skipTransparentOrOpaque;
+					if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+						transparentSkip = !skipTransparentOrOpaque;
+						if (renderPriority != RENDER_PRIO_RESERVED) {
+							if (!modelQueued) {
+								AppendDrawCall(model, position, scale, rotation, mats, animator, renderPriority);
+							}
+							currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+							continue;
+						}
+					}
+				}
+			}
+			if (transparentSkip) {
+				continue;
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
@@ -1171,7 +1283,7 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	}
 }
 
-void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats) {
+void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, int renderPriority) {
 	// have to work around the DS' jank by omitting scale from the MODELVIEW matrix for normals, but not the POSITION matrix
 	//Vec3 matrixSize;
 	//GetMatrixLengths(matrix, &matrixSize);
@@ -1197,12 +1309,30 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
+	bool skipTransparentOrOpaque = renderPriority == RENDER_PRIO_RESERVED;
+	bool transparentSkip = skipTransparentOrOpaque;
+	bool modelQueued = false;
 	if (model->NativeModel == NULL) {
 		const int vertGroupCount = model->vertexGroupCount;
 		for (int i = 0; i < vertGroupCount; ++i) {
 			if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
+				transparentSkip = skipTransparentOrOpaque;
 				// update our material
-				SetupMaterial(&mats[currVertexGroup->material], false);
+				if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+					transparentSkip = !skipTransparentOrOpaque;
+					if (renderPriority != RENDER_PRIO_RESERVED) {
+						if (!modelQueued) {
+							AppendDrawCall(model, position, scale, rotation, mats, NULL, renderPriority);
+							modelQueued = true;
+						}
+						currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+						continue;
+					}
+				}
+			}
+			if (transparentSkip) {
+				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+				continue;
 			}
 			if (!(currVertexGroup->bitFlags & VTX_QUAD)) {
 				if (currVertexGroup->bitFlags & VTX_STRIPS) {
@@ -1244,9 +1374,22 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 				SetupMaterial(&mats[i], false);
 			}
 			else {
-				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE)
-					SetupMaterial(&mats[currVertexGroup->material], false);
+				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
+					transparentSkip = skipTransparentOrOpaque;
+					if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+						transparentSkip = !skipTransparentOrOpaque;
+						if (renderPriority != RENDER_PRIO_RESERVED) {
+							if (!modelQueued) {
+								AppendDrawCall(model, position, scale, rotation, mats, NULL, renderPriority);
+								modelQueued = true;
+							}
+							currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+							continue;
+						}
+					}
+				}
 			}
+			if (transparentSkip) continue;
 			if (dsnm->FIFOBatches[i] != NULL) {
 				glCallList((u32*)dsnm->FIFOBatches[i]);
 			}
@@ -1426,6 +1569,20 @@ void UnloadTexture(Texture *tex) {
 	}
 	free(tex);
 }
+
+void RenderTransparentModels() {
+	qsort(modelDrawCalls, modelDrawCallCount, sizeof(ModelDrawCall), TransparentSortFunction);
+	for (int i = 0; i < modelDrawCallCount; ++i) {
+		if (modelDrawCalls[i].animator != NULL) {
+			RenderModelRigged(modelDrawCalls[i].model, &modelDrawCalls[i].position, &modelDrawCalls[i].scale, &modelDrawCalls[i].rotation, modelDrawCalls[i].materials, modelDrawCalls[i].animator, RENDER_PRIO_RESERVED);
+		}
+		else {
+			RenderModel(modelDrawCalls[i].model, &modelDrawCalls[i].position, &modelDrawCalls[i].scale, &modelDrawCalls[i].rotation, modelDrawCalls[i].materials, RENDER_PRIO_RESERVED);
+		}
+	}
+	modelDrawCallCount = 0;
+}
+
 #endif
 
 #ifdef _WIN32
@@ -1651,7 +1808,87 @@ void PCRenderNormalize(Vec3f* in, Vec3f* out) {
 	out->z = in->z / magnitude;
 }
 
-void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats) {
+void RenderStencilPC(Material *renderMat, Mesh* nativeModel, SubMesh *subMesh, bool shadow, int stencilValue, bool transparent) {
+	glEnable(GL_STENCIL);
+	glEnable(GL_STENCIL_TEST);
+	float* stencilDontDrawValue = (float*)malloc(sizeof(float));
+
+	// NOTE: may need to be changed later...
+	renderMat->depthEquals = false;
+	if (shadow) {
+		if (stencilValue == 0) {
+			// stencil should always succeed...but nothing output
+			glStencilFunc(GL_ALWAYS, 0x80, 0x80);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			stencilDontDrawValue[0] = 1.0f;
+			SetMaterialUniform(renderMat, "stencil", stencilDontDrawValue);
+			renderMat->transparent = true;
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+		}
+		else {
+			// okay, this part sucks. render once to upgrade 0 to 64, then again to upgrade the target to >64. we then finally render with target stencil, but have to downgrade 64 and 65 back to 0 and target.
+			stencilDontDrawValue[0] = 1.0f;
+			SetMaterialUniform(renderMat, "stencil", stencilDontDrawValue);
+			/*glStencilFunc(GL_EQUAL, 0x80, 0x3F);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			renderMat->transparent = true;
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);*/
+			// target to >64
+			glStencilFunc(GL_EQUAL, stencilValue + 0x80, 0x3F);
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+			// we can now render the model properly
+			if (!transparent) {
+				renderMat->transparent = false;
+			}
+			// greater than valid values to write; always <= to what we just set up
+			glStencilFunc(GL_GREATER, 0x40 + stencilValue, 0xFF);
+			// overwrite stencil
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			stencilDontDrawValue[0] = 0.0f;
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+			// now down-promote 0x40 to 0 and the other value back to the target stencil
+			stencilDontDrawValue[0] = 1.0f;
+			renderMat->transparent = true;
+
+			// change depth function to equals to ensure it updates properly
+			if (!transparent) {
+				renderMat->depthEquals = true;
+			}
+			glStencilFunc(GL_EQUAL, 0, 0x3F);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+			// write transparents to the 0x20 range so regular transparents don't get eaten by opaques
+			if (transparent) {
+				stencilValue += 0x20;
+			}
+			// down promote the >0x20 and >0x40 values now
+			glStencilFunc(GL_EQUAL, stencilValue, 0x3F);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+			
+			// 5 draw calls for a single stenciled material...hell world...
+		}
+	}
+	else {
+		stencilDontDrawValue[0] = 0.0f;
+		SetMaterialUniform(renderMat, "stencil", stencilDontDrawValue);
+		if (!transparent) {
+			glStencilFunc(GL_ALWAYS, stencilValue, 0x1F);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			renderMat->transparent = false;
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+		}
+		else {
+			// on DS, transparents will always stencil each other out
+			glStencilFunc(GL_NOTEQUAL, stencilValue + 0x20, 0x3F);
+			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+			renderMat->transparent = false;
+			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
+		}
+	}
+}
+
+void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, int renderPriority) {
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
@@ -1718,7 +1955,7 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 
 	for (int i = 0; i < model->materialCount; ++i) {
 		// queue up transparencies...
-		if ((mats[i].texture != NULL && (mats[i].texture->type == 1 || mats[i].texture->type == 6)) || mats[i].alpha < 31) {
+		if ((mats[i].texture != NULL && (mats[i].texture->type == 1 || mats[i].texture->type == 6)) || mats[i].alpha < 31 || (mats[i].stencilPack & STENCIL_FORCE_OPAQUE_ORDERING) != 0) {
 			if (modelDrawCallAllocated <= modelDrawCallCount) {
 				modelDrawCallAllocated += 128;
 				modelDrawCalls = realloc(modelDrawCalls, modelDrawCallAllocated * sizeof(ModelDrawCall));
@@ -1728,6 +1965,7 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(SDMaterial));
 			modelDrawCalls[modelDrawCallCount].matrix = matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
+			modelDrawCalls[modelDrawCallCount].renderPriority = renderPriority;
 			Vec3 zero = { 0, 0, 0 };
 			MatrixTimesVec3(&MVP, &zero, &modelDrawCalls[modelDrawCallCount].position);
 			++modelDrawCallCount;
@@ -1744,21 +1982,28 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
 			diffColor->w = (*(int*)&mats[i].alpha) / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
-			renderMat.backFaceCulling = mats[i].backFaceCulling;
+			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
+			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
 			int* unlit = malloc(sizeof(int));
 			unlit[0] = 0;
 			if (!mats[i].lit) {
 				unlit[0] = 1;
 			}
 			SetMaterialUniform(&renderMat, "unlit", unlit);
-			// render the submesh now
-			RenderSubMesh(model->NativeModel, &renderMat, ((Mesh*)model->NativeModel)->subMeshes[i], &renderMat.mainShader);
+			// set up stencil
+			if ((mats[i].stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) {
+				RenderStencilPC(&renderMat, model->NativeModel, &((Mesh*)model->NativeModel)->subMeshes[i], true, mats[i].stencilPack & STENCIL_VALUE, false);
+			}
+			else {
+				RenderStencilPC(&renderMat, model->NativeModel, &((Mesh*)model->NativeModel)->subMeshes[i], false, mats[i].stencilPack & STENCIL_VALUE, false);
+			}
+			// the above 'RenderStencil' functions will handle actually rendering the model!
 		}
 	}
 	DeleteMaterial(&renderMat);
 }
 
-void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator) {
+void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator, int renderPriority) {
 	if (mats == NULL) {
 		mats = model->defaultMats;
 	}
@@ -1868,16 +2113,17 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 	SetMaterialUniform(&renderMat, "boneMatrices", boneMatrices);
 
 	for (int i = 0; i < model->materialCount; ++i) {
-		if ((mats[i].texture != NULL && (mats[i].texture->type == 1 || mats[i].texture->type == 6)) || mats[i].alpha < 31) {
+		if ((mats[i].texture != NULL && (mats[i].texture->type == 1 || mats[i].texture->type == 6)) || mats[i].alpha < 31 || (mats[i].stencilPack & STENCIL_FORCE_OPAQUE_ORDERING) != 0) {
 			if (modelDrawCallAllocated <= modelDrawCallCount) {
 				modelDrawCallAllocated += 128;
 				modelDrawCalls = realloc(modelDrawCalls, modelDrawCallAllocated * sizeof(ModelDrawCall));
 			}
 			modelDrawCalls[modelDrawCallCount].animator = animator;
 			modelDrawCalls[modelDrawCallCount].materialId = i;
-			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(Material));
+			memcpy(&modelDrawCalls[modelDrawCallCount].subMat, &mats[i], sizeof(SDMaterial));
 			modelDrawCalls[modelDrawCallCount].matrix = matrix;
 			modelDrawCalls[modelDrawCallCount].model = model;
+			modelDrawCalls[modelDrawCallCount].renderPriority = renderPriority;
 			Vec3 zero = { 0, 0, 0 };
 			MatrixTimesVec3(&MVP, &zero, &modelDrawCalls[modelDrawCallCount].position);
 			++modelDrawCallCount;
@@ -1894,9 +2140,17 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
 			diffColor->w = (*(int*)&mats[i].alpha) / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
-			renderMat.backFaceCulling = mats[i].backFaceCulling;
-			// render the submesh now
-			RenderSubMesh(model->NativeModel, &renderMat, ((Mesh*)model->NativeModel)->subMeshes[i], &renderMat.mainShader);
+			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
+			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
+
+			// set up stencil
+			if ((mats[i].stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) {
+				RenderStencilPC(&renderMat, model->NativeModel, &((Mesh*)model->NativeModel)->subMeshes[i], true, mats[i].stencilPack & STENCIL_VALUE, false);
+			}
+			else {
+				RenderStencilPC(&renderMat, model->NativeModel, &((Mesh*)model->NativeModel)->subMeshes[i], false, mats[i].stencilPack & STENCIL_VALUE, false);
+			}
+			// the above 'RenderStencil' functions will handle actually rendering the model!
 		}
 	}
 	DeleteMaterial(&renderMat);
@@ -2010,22 +2264,41 @@ void RenderModelTransparent(ModelDrawCall* call) {
 	diffColor->z = (*(int*)&call->subMat.color.z) / 31.0f;
 	diffColor->w = (*(int*)&call->subMat.alpha) / 31.0f;
 	SetMaterialUniform(&renderMat, "diffColor", diffColor);
-	renderMat.backFaceCulling = call->subMat.backFaceCulling;
-	renderMat.transparent = true;
-	// render the submesh now
-	RenderSubMesh(call->model->NativeModel, &renderMat, ((Mesh*)call->model->NativeModel)->subMeshes[call->materialId], &renderMat.mainShader);
+	renderMat.backFaceCulling = call->subMat.faceCulling == BACK_CULLING;
+	renderMat.frontFaceCulling = call->subMat.faceCulling == FRONT_CULLING;
+	// technically, we now use this for stencil ordered opaques as well, so...
+	if (!(call->subMat.alpha == 31 && call->subMat.texture->type != 6 && call->subMat.texture->type != 1)) {
+		renderMat.transparent = true;
+	}
+	else {
+		renderMat.transparent = false;
+	}
+
+	// set up stencil
+	if ((call->subMat.stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) {
+		RenderStencilPC(&renderMat, call->model->NativeModel, &((Mesh*)call->model->NativeModel)->subMeshes[call->materialId], true, call->subMat.stencilPack & STENCIL_VALUE, renderMat.transparent);
+	}
+	else {
+		RenderStencilPC(&renderMat, call->model->NativeModel, &((Mesh*)call->model->NativeModel)->subMeshes[call->materialId], false, call->subMat.stencilPack & STENCIL_VALUE, renderMat.transparent);
+	}
+	// the above 'RenderStencil' functions will handle actually rendering the model!
 
 	DeleteMaterial(&renderMat);
-}
-
-int TransparentSortFunction(ModelDrawCall* a, ModelDrawCall* b) {
-	return a->position.z - b->position.z > 0 ? -1 : 1;
 }
 
 void RenderTransparentModels() {
 	qsort(modelDrawCalls, modelDrawCallCount, sizeof(ModelDrawCall), TransparentSortFunction);
 	for (int i = 0; i < modelDrawCallCount; ++i) {
-		RenderModelTransparent(&modelDrawCalls[i]);
+		// render opaques first
+		if (modelDrawCalls[i].subMat.alpha == 31 && modelDrawCalls[i].subMat.texture->type != 6 && modelDrawCalls[i].subMat.texture->type != 1) {
+			RenderModelTransparent(&modelDrawCalls[i]);
+		}
+	}
+	for (int i = 0; i < modelDrawCallCount; ++i) {
+		// render transparents now
+		if (!(modelDrawCalls[i].subMat.alpha == 31 && modelDrawCalls[i].subMat.texture->type != 6 && modelDrawCalls[i].subMat.texture->type != 1)) {
+			RenderModelTransparent(&modelDrawCalls[i]);
+		}
 	}
 	modelDrawCallCount = 0;
 }
@@ -3181,7 +3454,7 @@ void Initialize3D(bool multipass, bool subBGFull) {
 	videoSetModeSub(MODE_0_2D);
 
 	// AA because why not
-	glEnable(GL_ANTIALIAS);
+	//glEnable(GL_ANTIALIAS);
 
 	glEnable(GL_TEXTURE_2D);
 

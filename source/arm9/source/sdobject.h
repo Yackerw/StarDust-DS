@@ -42,9 +42,9 @@ struct Object {
 	bool trigger;
 	bool destroy;
 	bool active;
-	char multipassTarget;
 	Animator *animator;
 	unsigned int layer;
+	int renderPriority;
 	int netId;
 	ObjectPtr references;
 };
