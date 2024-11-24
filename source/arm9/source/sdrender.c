@@ -78,10 +78,12 @@ f32 cameraFar = 1409600;
 m4x4 cameraMatrix;
 ViewFrustum frustum;
 
-Vec3 lightNormal;
-Vec3 nativeLightNormal;
-int lightColor;
-int ambientColor;
+Vec3 lightNormal[4];
+Vec3 nativeLightNormal[4];
+int lightColor[4];
+bool lightEnabled[4];
+bool lightsDirty[4]; // used basically only for DS light overrides
+Vec3i ambientColor;
 
 int bgID;
 
@@ -1022,6 +1024,16 @@ void AppendDrawCall(Model* model, Vec3* position, Vec3* scale, Quaternion* rotat
 }
 
 bool SetupMaterial(SDMaterial* mat, bool rigged) {
+	// lighting notes for me:
+	// vertex colors are capped at 31 (well, 63 internally, but it's equivalent to an input of 31)
+	// highlight mode is toon shading, but RGB get used again to add to the color. this means it can actually hue shift! it's clumsy to use, however, as RGB gets used initially, then
+	// the toon lighting table is added using R as the index. as a result, you'd have to be VERY clever with how you use it outside of pure white lighting.
+	// another of note is that the lighting calculation is (light * diffuse * dot) + (ambient * light)
+	// this means that light functions more like diffuse than...well, LIGHT. so multiple lights functioning in the same manner as a modern renderer is IMPOSSIBLE,
+	// and DIFFUSE acts more like a light. this means light calculation is extremely cumbersome and, to be honest, probably not worth implementing in a broader case.
+	// HOWEVER! emission would be functional as ambient in a replacement, so if you set diffuse to proper, emission to (emiss + (ambient * color)) and ambient to pure 0...you get modern lights. weird!
+	
+
 	// alpha, stencil ID, stencil compare, don't omit polygons that intersect far plane
 	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(mat->stencilPack & STENCIL_VALUE) | (((mat->stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) ? (3 << 4) : 0) | (1 << 12);
 	bool isTransparent = mat->alpha < 31;
@@ -1042,7 +1054,13 @@ bool SetupMaterial(SDMaterial* mat, bool rigged) {
 	else {
 		flags |= POLY_CULL_NONE;
 	}
-	if (mat->lit) {
+	if (mat->lightingFlags & LIGHT_ENABLE) {
+		for (int i = 0; i < 4; ++i) {
+			if (lightEnabled[i]) {
+				flags |= 1 << i; // light enabled are stored in bottom 4 bits, so we can just do this
+			}
+		}
+		// allow light overrides to occur
 		// reset matrix because for SOME REASON the light is rotated by that when set up
 		glMatrixMode(GL_MODELVIEW);
 		if (rigged) {
@@ -1052,18 +1070,77 @@ bool SetupMaterial(SDMaterial* mat, bool rigged) {
 			glPushMatrix();
 			glLoadIdentity();
 		}
-		// set our color to the light color, because DS handles color very weirdly
-		glLight(0, RGB15(mat->color.x,
-			mat->color.y,
-			mat->color.z), lightNormal.x, lightNormal.y, lightNormal.z);
+
+		if (mat->lightingFlags & LIGHT_OVERRIDE0) {
+			flags |= 1;
+			glLight(0, mat->lightOverride0, (mat->lightNormal0 & 0x1F) * 32, ((mat->lightNormal0 >> 5) & 0x1F) * 32, ((mat->lightNormal0 >> 10) & 0x1F) * 32);
+			lightsDirty[0] = true;
+		}
+		else {
+			if (lightsDirty[0]) {
+				glLight(0, lightColor[0], lightNormal[0].x, lightNormal[0].y, lightNormal[0].z);
+				lightsDirty[0] = false;
+			}
+		}
+		if (mat->lightingFlags & LIGHT_OVERRIDE1) {
+			flags |= 2;
+			glLight(1, mat->lightOverride1, (mat->lightNormal1 & 0x1F) * 32, ((mat->lightNormal1 >> 5) & 0x1F) * 32, ((mat->lightNormal1 >> 10) & 0x1F) * 32);
+			lightsDirty[1] = true;
+		}
+		else {
+			if (lightsDirty[1]) {
+				glLight(1, lightColor[1], lightNormal[1].x, lightNormal[1].y, lightNormal[1].z);
+				lightsDirty[1] = false;
+			}
+		}
+		if (mat->lightingFlags & LIGHT_OVERRIDE2) {
+			flags |= 4;
+			// hell world backwards compatibility with materials
+			unsigned short currLightNormal = mat->lightNormal2Pt0 | (mat->lightNormal2Pt1 << 8);
+			glLight(2, mat->lightOverride2, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
+			lightsDirty[2] = true;
+		}
+		else {
+			if (lightsDirty[2]) {
+				glLight(2, lightColor[2], lightNormal[2].x, lightNormal[2].y, lightNormal[2].z);
+				lightsDirty[3] = false;
+			}
+		}
+		if (mat->lightingFlags & LIGHT_OVERRIDE3) {
+			flags |= 8;
+			// hell world backwards compatibility with materials
+			unsigned short currLightNormal = mat->lightNormal3Pt0 | (mat->lightNormal3Pt1 << 8);
+			glLight(3, mat->lightOverride3, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
+			lightsDirty[3] = true;
+		}
+		else {
+			if (lightsDirty[3]) {
+				glLight(3, lightColor[3], lightNormal[3].x, lightNormal[3].y, lightNormal[3].z);
+				lightsDirty[3] = false;
+			}
+		}
+
 		if (!rigged) {
 			glPopMatrix(1);
 		}
-		flags |= POLY_FORMAT_LIGHT0;
-		glMaterialf(GL_EMISSION, RGB15(mat->emission.x, mat->emission.y, mat->emission.z));
+		int diffR = mat->colorR * ambientColor.x;
+		int diffG = mat->colorG * ambientColor.y;
+		int diffB = mat->colorB * ambientColor.z;
+		diffR = diffR ? ((diffR + 1) >> 5) : 0;
+		diffG = diffG ? ((diffG + 1) >> 5) : 0;
+		diffB = diffB ? ((diffB + 1) >> 5) : 0;
+		diffR += mat->emissionR;
+		diffG += mat->emissionG;
+		diffB += mat->emissionB;
+		if (diffR > 0x1F) diffR = 0x1F;
+		if (diffG > 0x1F) diffG = 0x1F;
+		if (diffB > 0x1F) diffB = 0x1F;
+		glMaterialf(GL_EMISSION, RGB15(diffR, diffG, diffB));
+		glMaterialf(GL_DIFFUSE, RGB15(mat->colorR, mat->colorG, mat->colorB));
 	}
 	else {
-		glMaterialf(GL_EMISSION, RGB15(mat->color.x, mat->color.y, mat->color.z));
+		glMaterialf(GL_EMISSION, RGB15(mat->colorR, mat->colorG, mat->colorB));
+		glMaterialf(GL_DIFFUSE, 0);
 	}
 	// specular is OFFICIALLY un-supported. sorry. DS GPU sucks.
 	//glMaterialf(GL_SPECULAR, RGB15(((lightColor & 0x1F) * mat->specular) >> 8, (((lightColor >> 5) & 0x1F) * mat->specular) >> 8, (((lightColor >> 10) & 0x1F) * mat->specular) >> 8));
@@ -1801,13 +1878,6 @@ Texture* LoadTexture(char* input, bool upload) {
 	return LoadTextureFromRAM(newTex, upload, input);
 }
 
-void PCRenderNormalize(Vec3f* in, Vec3f* out) {
-	float magnitude = sqrtf((in->x * in->x) + (in->y * in->y) + (in->z * in->z));
-	out->x = in->x / magnitude;
-	out->y = in->y / magnitude;
-	out->z = in->z / magnitude;
-}
-
 void RenderStencilPC(Material *renderMat, Mesh* nativeModel, SubMesh *subMesh, bool shadow, int stencilValue, bool transparent) {
 	glEnable(GL_STENCIL);
 	glEnable(GL_STENCIL_TEST);
@@ -1861,7 +1931,7 @@ void RenderStencilPC(Material *renderMat, Mesh* nativeModel, SubMesh *subMesh, b
 			if (transparent) {
 				stencilValue += 0x20;
 			}
-			// down promote the >0x20 and >0x40 values now
+			// down promote the >0x40 and >0x80 values now
 			glStencilFunc(GL_EQUAL, stencilValue, 0x3F);
 			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
@@ -1885,6 +1955,119 @@ void RenderStencilPC(Material *renderMat, Mesh* nativeModel, SubMesh *subMesh, b
 			renderMat->transparent = false;
 			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
 		}
+	}
+}
+
+void SetupLightOverridesPC(SDMaterial *mat, Vec3f *lightCol, Vec4f *lightDir, Vec3f *lightColLocal, Vec4f *lightDirLocal) {
+	if (mat->lightingFlags & LIGHT_OVERRIDE0) {
+		lightCol[0].x = (mat->lightOverride0 & 0x1F) / 31.0f;
+		lightCol[0].y = ((mat->lightOverride0 >> 5) & 0x1F) / 31.0f;
+		lightCol[0].z = ((mat->lightOverride0 >> 10) & 0x1F) / 31.0f;
+		lightDir[0].x = (mat->lightNormal0 & 0x1F) / 16.0f;
+		if (lightDir[0].x >= 1.0f) {
+			// the normals aren't whole numbers...so divide by 16, not 15!
+			lightDir[0].x = -1.0f + ((mat->lightNormal0 & 0xF) / 16.0f);
+		}
+		lightDir[0].y = ((mat->lightNormal0 >> 5) & 0x1F) / 16.0f;
+		if (lightDir[0].y >= 1.0f) {
+			lightDir[0].y = -1.0f + (((mat->lightNormal0 >> 5) & 0x1F) / 16.0f);
+		}
+		lightDir[0].z = ((mat->lightNormal0 >> 10) & 0x1F) / 16.0f;
+		if (lightDir[0].z >= 1.0f) {
+			lightDir[0].z = -1.0f + (((mat->lightNormal0 >> 10) & 0x1F) / 16.0f);
+		}
+		// invert so it dots correctly against normal...
+		lightDir[0].x = -lightDir[0].x;
+		lightDir[0].y = -lightDir[0].y;
+		lightDir[0].z = -lightDir[0].z;
+		lightDir[0].w = 1.0f;
+	}
+	else {
+		lightDir[0] = lightDirLocal[0];
+		lightCol[0] = lightColLocal[0];
+	}
+	if (mat->lightingFlags & LIGHT_OVERRIDE1) {
+		lightCol[1].x = (mat->lightOverride1 & 0x1F) / 31.0f;
+		lightCol[1].y = ((mat->lightOverride1 >> 5) & 0x1F) / 31.0f;
+		lightCol[1].z = ((mat->lightOverride1 >> 10) & 0x1F) / 31.0f;
+		lightDir[1].x = (mat->lightNormal1 & 0x1F) / 16.0f;
+		if (lightDir[1].x >= 1.0f) {
+			// the normals aren't whole numbers...so divide by 16, not 15!
+			lightDir[1].x = -1.0f + ((mat->lightNormal1 & 0xF) / 16.0f);
+		}
+		lightDir[1].y = ((mat->lightNormal1 >> 5) & 0x1F) / 16.0f;
+		if (lightDir[1].y >= 1.0f) {
+			lightDir[1].y = -1.0f + (((mat->lightNormal1 >> 5) & 0x1F) / 16.0f);
+		}
+		lightDir[1].z = ((mat->lightNormal1 >> 10) & 0x1F) / 16.0f;
+		if (lightDir[1].z >= 1.0f) {
+			lightDir[1].z = -1.0f + (((mat->lightNormal1 >> 10) & 0x1F) / 16.0f);
+		}
+		// invert so it dots correctly against normal...
+		lightDir[1].x = -lightDir[1].x;
+		lightDir[1].y = -lightDir[1].y;
+		lightDir[1].z = -lightDir[1].z;
+		lightDir[1].w = 1.0f;
+	}
+	else {
+		lightDir[1] = lightDirLocal[1];
+		lightCol[1] = lightColLocal[1];
+	}
+	if (mat->lightingFlags & LIGHT_OVERRIDE2) {
+		lightCol[2].x = (mat->lightOverride2 & 0x1F) / 31.0f;
+		lightCol[2].y = ((mat->lightOverride2 >> 5) & 0x1F) / 31.0f;
+		lightCol[2].z = ((mat->lightOverride2 >> 10) & 0x1F) / 31.0f;
+		unsigned short lightNormal = mat->lightNormal2Pt0 | (mat->lightNormal2Pt1 << 8);
+		lightDir[2].x = (lightNormal & 0x1F) / 16.0f;
+		if (lightDir[2].x >= 1.0f) {
+			// the normals aren't whole numbers...so divide by 16, not 15!
+			lightDir[2].x = -1.0f + ((lightNormal & 0xF) / 16.0f);
+		}
+		lightDir[2].y = ((lightNormal >> 5) & 0x1F) / 16.0f;
+		if (lightDir[2].y >= 1.0f) {
+			lightDir[2].y = -1.0f + (((lightNormal >> 5) & 0x1F) / 16.0f);
+		}
+		lightDir[2].z = ((lightNormal >> 10) & 0x1F) / 16.0f;
+		if (lightDir[2].z >= 1.0f) {
+			lightDir[2].z = -1.0f + (((lightNormal >> 10) & 0x1F) / 16.0f);
+		}
+		// invert so it dots correctly against normal...
+		lightDir[2].x = -lightDir[2].x;
+		lightDir[2].y = -lightDir[2].y;
+		lightDir[2].z = -lightDir[2].z;
+		lightDir[2].w = 1.0f;
+	}
+	else {
+		lightDir[2] = lightDirLocal[2];
+		lightCol[2] = lightColLocal[2];
+	}
+	if (mat->lightingFlags & LIGHT_OVERRIDE3) {
+		lightCol[3].x = (mat->lightOverride3 & 0x1F) / 31.0f;
+		lightCol[3].y = ((mat->lightOverride3 >> 5) & 0x1F) / 31.0f;
+		lightCol[3].z = ((mat->lightOverride3 >> 10) & 0x1F) / 31.0f;
+		unsigned short lightNormal = mat->lightNormal3Pt0 | (mat->lightNormal3Pt1 << 8);
+		lightDir[3].x = (lightNormal & 0x1F) / 16.0f;
+		if (lightDir[3].x >= 1.0f) {
+			// the normals aren't whole numbers...so divide by 16, not 15!
+			lightDir[3].x = -1.0f + ((lightNormal & 0xF) / 16.0f);
+		}
+		lightDir[3].y = ((lightNormal >> 5) & 0x1F) / 16.0f;
+		if (lightDir[3].y >= 1.0f) {
+			lightDir[3].y = -1.0f + (((lightNormal >> 5) & 0x1F) / 16.0f);
+		}
+		lightDir[3].z = ((lightNormal >> 10) & 0x1F) / 16.0f;
+		if (lightDir[3].z >= 1.0f) {
+			lightDir[3].z = -1.0f + (((lightNormal >> 10) & 0x1F) / 16.0f);
+		}
+		// invert so it dots correctly against normal...
+		lightDir[3].x = -lightDir[3].x;
+		lightDir[3].y = -lightDir[3].y;
+		lightDir[3].z = -lightDir[3].z;
+		lightDir[3].w = 1.0f;
+	}
+	else {
+		lightDir[3] = lightDirLocal[3];
+		lightCol[3] = lightColLocal[3];
 	}
 }
 
@@ -1933,25 +2116,32 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 
 
 	// lighting
-	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
-	lightDir->x = -f32tofloat(nativeLightNormal.x);
-	lightDir->y = -f32tofloat(nativeLightNormal.y);
-	lightDir->z = -f32tofloat(nativeLightNormal.z);
-	PCRenderNormalize(lightDir, lightDir);
+	Vec4f* lightDir = (Vec4f*)malloc(sizeof(Vec4f) * 4);
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f) * 4);
+	Vec4f lightDirLocal[4];
+	Vec3f lightColLocal[4];
+	for (int i = 0; i < 4; ++i) {
+		lightDirLocal[i].x = -f32tofloat(nativeLightNormal[i].x);
+		lightDirLocal[i].y = -f32tofloat(nativeLightNormal[i].y);
+		lightDirLocal[i].z = -f32tofloat(nativeLightNormal[i].z);
+		lightDirLocal[i].w = lightEnabled[i] ? 1.0f : 0;
+		lightColLocal[i].x = (lightColor[i] & 0x1F) / 31.0f;
+		lightColLocal[i].y = ((lightColor[i] >> 5) & 0x1F) / 31.0f;
+		lightColLocal[i].z = ((lightColor[i] >> 10) & 0x1F) / 31.0f;
+	}
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
-	lightCol->x = (lightColor & 0x1F) / 31.0f;
-	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
-	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
 
 	// ambient
 	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
-	ambient->x = (ambientColor & 0x1F) / 31.0f;
-	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
-	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
+	ambient->x = ambientColor.x / 31.0f;
+	ambient->y = ambientColor.y / 31.0f;
+	ambient->z = ambientColor.z / 31.0f;
 	SetMaterialUniform(&renderMat, "ambient", ambient);
+
+	Vec3f* emissive = (Vec3f*)malloc(sizeof(Vec3f));
+	SetMaterialUniform(&renderMat, "emissive", emissive);
 
 	for (int i = 0; i < model->materialCount; ++i) {
 		// queue up transparencies...
@@ -1977,19 +2167,28 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 			}
 			// set up diffuse color
 			Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
-			diffColor->x = (*(int*)&mats[i].color.x) / 31.0f;
-			diffColor->y = (*(int*)&mats[i].color.y) / 31.0f;
-			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
-			diffColor->w = (*(int*)&mats[i].alpha) / 31.0f;
+			diffColor->x = mats[i].colorR / 31.0f;
+			diffColor->y = mats[i].colorG / 31.0f;
+			diffColor->z = mats[i].colorB / 31.0f;
+			diffColor->w = mats[i].alpha / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
 			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
 			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
 			int* unlit = malloc(sizeof(int));
 			unlit[0] = 0;
-			if (!mats[i].lit) {
+			if (!(mats[i].lightingFlags & LIGHT_ENABLE)) {
 				unlit[0] = 1;
 			}
 			SetMaterialUniform(&renderMat, "unlit", unlit);
+
+			// set up emissive
+			emissive->x = mats[i].emissionR / 31.0f;
+			emissive->y = mats[i].emissionG / 31.0f;
+			emissive->z = mats[i].emissionB / 31.0f;
+
+			// handle light overrides
+			SetupLightOverridesPC(&mats[i], lightCol, lightDir, lightColLocal, lightDirLocal);
+
 			// set up stencil
 			if ((mats[i].stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) {
 				RenderStencilPC(&renderMat, model->NativeModel, &((Mesh*)model->NativeModel)->subMeshes[i], true, mats[i].stencilPack & STENCIL_VALUE, false);
@@ -2048,26 +2247,32 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 
 
 	// lighting
-	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
-	lightDir->x = -f32tofloat(nativeLightNormal.x);
-	lightDir->y = -f32tofloat(nativeLightNormal.y);
-	lightDir->z = -f32tofloat(nativeLightNormal.z);
-	PCRenderNormalize(lightDir, lightDir);
+	Vec4f* lightDir = (Vec4f*)malloc(sizeof(Vec4f) * 4);
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f) * 4);
+	Vec4f lightDirLocal[4];
+	Vec3f lightColLocal[4];
+	for (int i = 0; i < 4; ++i) {
+		lightDirLocal[i].x = -f32tofloat(nativeLightNormal[i].x);
+		lightDirLocal[i].y = -f32tofloat(nativeLightNormal[i].y);
+		lightDirLocal[i].z = -f32tofloat(nativeLightNormal[i].z);
+		lightDirLocal[i].w = lightEnabled[i] ? 1.0f : 0;
+		lightColLocal[i].x = (lightColor[i] & 0x1F) / 31.0f;
+		lightColLocal[i].y = ((lightColor[i] >> 5) & 0x1F) / 31.0f;
+		lightColLocal[i].z = ((lightColor[i] >> 10) & 0x1F) / 31.0f;
+	}
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
-	lightCol->x = (lightColor & 0x1F) / 31.0f;
-	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
-	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
 
 	// ambient
 	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
-	ambient->x = (ambientColor & 0x1F) / 31.0f;
-	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
-	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
+	ambient->x = ambientColor.x / 31.0f;
+	ambient->y = ambientColor.y / 31.0f;
+	ambient->z = ambientColor.z / 31.0f;
 	SetMaterialUniform(&renderMat, "ambient", ambient);
 
+	Vec3f* emissive = (Vec3f*)malloc(sizeof(Vec3f));
+	SetMaterialUniform(&renderMat, "emissive", emissive);
 
 	// bone matrices!
 	m4x4* boneMatrices = (m4x4*)malloc(sizeof(m4x4) * 128);
@@ -2135,13 +2340,26 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 			}
 			// set up diffuse color
 			Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
-			diffColor->x = (*(int*)&mats[i].color.x) / 31.0f;
-			diffColor->y = (*(int*)&mats[i].color.y) / 31.0f;
-			diffColor->z = (*(int*)&mats[i].color.z) / 31.0f;
-			diffColor->w = (*(int*)&mats[i].alpha) / 31.0f;
+			diffColor->x = mats[i].colorR / 31.0f;
+			diffColor->y = mats[i].colorG / 31.0f;
+			diffColor->z = mats[i].colorB / 31.0f;
+			diffColor->w = mats[i].alpha / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
 			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
 			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
+			int* unlit = malloc(sizeof(int));
+			unlit[0] = 0;
+			if (!(mats[i].lightingFlags & LIGHT_ENABLE)) {
+				unlit[0] = 1;
+			}
+
+			// handle light overrides
+			SetupLightOverridesPC(&mats[i], lightCol, lightDir, lightColLocal, lightDirLocal);
+
+			// set up emissive
+			emissive->x = mats[i].emissionR / 31.0f;
+			emissive->y = mats[i].emissionG / 31.0f;
+			emissive->z = mats[i].emissionB / 31.0f;
 
 			// set up stencil
 			if ((mats[i].stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) {
@@ -2188,25 +2406,32 @@ void RenderModelTransparent(ModelDrawCall* call) {
 
 
 	// lighting
-	Vec3f* lightDir = (Vec3f*)malloc(sizeof(Vec3f));
-	lightDir->x = -f32tofloat(nativeLightNormal.x);
-	lightDir->y = -f32tofloat(nativeLightNormal.y);
-	lightDir->z = -f32tofloat(nativeLightNormal.z);
-	PCRenderNormalize(lightDir, lightDir);
+	Vec4f* lightDir = (Vec4f*)malloc(sizeof(Vec4f) * 4);
+	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f) * 4);
+	Vec4f lightDirLocal[4];
+	Vec3f lightColLocal[4];
+	for (int i = 0; i < 4; ++i) {
+		lightDirLocal[i].x = -f32tofloat(nativeLightNormal[i].x);
+		lightDirLocal[i].y = -f32tofloat(nativeLightNormal[i].y);
+		lightDirLocal[i].z = -f32tofloat(nativeLightNormal[i].z);
+		lightDirLocal[i].w = lightEnabled[i] ? 1.0f : 0;
+		lightColLocal[i].x = (lightColor[i] & 0x1F) / 31.0f;
+		lightColLocal[i].y = ((lightColor[i] >> 5) & 0x1F) / 31.0f;
+		lightColLocal[i].z = ((lightColor[i] >> 10) & 0x1F) / 31.0f;
+	}
 	SetMaterialUniform(&renderMat, "lightDirection", lightDir);
-	Vec3f* lightCol = (Vec3f*)malloc(sizeof(Vec3f));
-	lightCol->x = (lightColor & 0x1F) / 31.0f;
-	lightCol->y = ((lightColor >> 5) & 0x1F) / 31.0f;
-	lightCol->z = ((lightColor >> 10) & 0x1F) / 31.0f;
 	SetMaterialUniform(&renderMat, "lightColor", lightCol);
 
 
 	// ambient
 	Vec3f* ambient = (Vec3f*)malloc(sizeof(Vec3f));
-	ambient->x = (ambientColor & 0x1F) / 31.0f;
-	ambient->y = ((ambientColor >> 5) & 0x1F) / 31.0f;
-	ambient->z = ((ambientColor >> 10) & 0x1F) / 31.0f;
+	ambient->x = ambientColor.x / 31.0f;
+	ambient->y = ambientColor.y / 31.0f;
+	ambient->z = ambientColor.z / 31.0f;
 	SetMaterialUniform(&renderMat, "ambient", ambient);
+
+	Vec3f* emissive = (Vec3f*)malloc(sizeof(Vec3f));
+	SetMaterialUniform(&renderMat, "emissive", emissive);
 
 
 	if (call->animator != NULL) {
@@ -2259,13 +2484,27 @@ void RenderModelTransparent(ModelDrawCall* call) {
 	}
 	// set up diffuse color
 	Vec4f* diffColor = (Vec4f*)malloc(sizeof(Vec4f));
-	diffColor->x = (*(int*)&call->subMat.color.x) / 31.0f;
-	diffColor->y = (*(int*)&call->subMat.color.y) / 31.0f;
-	diffColor->z = (*(int*)&call->subMat.color.z) / 31.0f;
-	diffColor->w = (*(int*)&call->subMat.alpha) / 31.0f;
+	diffColor->x = call->subMat.colorR / 31.0f;
+	diffColor->y = call->subMat.colorG / 31.0f;
+	diffColor->z = call->subMat.colorB / 31.0f;
+	diffColor->w = call->subMat.alpha / 31.0f;
 	SetMaterialUniform(&renderMat, "diffColor", diffColor);
 	renderMat.backFaceCulling = call->subMat.faceCulling == BACK_CULLING;
 	renderMat.frontFaceCulling = call->subMat.faceCulling == FRONT_CULLING;
+	int* unlit = malloc(sizeof(int));
+	unlit[0] = 0;
+	if (!(call->subMat.lightingFlags & LIGHT_ENABLE)) {
+		unlit[0] = 1;
+	}
+
+	// handle light overrides
+	SetupLightOverridesPC(&call->subMat, lightCol, lightDir, lightColLocal, lightDirLocal);
+
+	// set up emissive
+	emissive->x = call->subMat.emissionR / 31.0f;
+	emissive->y = call->subMat.emissionG / 31.0f;
+	emissive->z = call->subMat.emissionB / 31.0f;
+
 	// technically, we now use this for stencil ordered opaques as well, so...
 	if (!(call->subMat.alpha == 31 && call->subMat.texture->type != 6 && call->subMat.texture->type != 1)) {
 		renderMat.transparent = true;
@@ -2304,10 +2543,11 @@ void RenderTransparentModels() {
 }
 #endif
 
-void SetLightDir(int x, int y, int z) {
-	nativeLightNormal.x = x;
-	nativeLightNormal.y = y;
-	nativeLightNormal.z = z;
+void SetLightDir(int lightId, f32 x, f32 y, f32 z) {
+	if (lightId < 0 || lightId > 3) return;
+	nativeLightNormal[lightId].x = x;
+	nativeLightNormal[lightId].y = y;
+	nativeLightNormal[lightId].z = z;
 	x /= 8;
 	y /= 8;
 	z /= 8;
@@ -2320,23 +2560,39 @@ void SetLightDir(int x, int y, int z) {
 	if (z >= 512) {
 		z = 511;
 	}
-	lightNormal.x = x;
-	lightNormal.y = y;
-	lightNormal.z = z;
-}
-
-void SetLightColor(int color) {
-	lightColor = color;
+	lightNormal[lightId].x = x;
+	lightNormal[lightId].y = y;
+	lightNormal[lightId].z = z;
 #ifndef _NOTDS
-	glMaterialf(GL_DIFFUSE, color);
+	// set light dir
+	glLoadIdentity();
+	glLight(lightId, lightColor[lightId], lightNormal[lightId].x, lightNormal[lightId].y, lightNormal[lightId].z);
 #endif
 }
 
-void SetAmbientColor(int color) {
-	ambientColor = color;
+void SetLightColor(int lightId, char R, char G, char B) {
+	if (lightId < 0 || lightId > 3) return;
+	lightColor[lightId] = RGB15(R, G, B);
 #ifndef _NOTDS
-	glMaterialf(GL_AMBIENT, color);
+	glLoadIdentity();
+	glLight(lightId, lightColor[lightId], lightNormal[lightId].x, lightNormal[lightId].y, lightNormal[lightId].z);
 #endif
+}
+
+void SetAmbientColor(char R, char G, char B) {
+	ambientColor.x = R & 0x1F;
+	ambientColor.y = G & 0x1F;
+	ambientColor.z = B & 0x1F;
+}
+
+void EnableLight(int lightId) {
+	if (lightId < 0 || lightId > 3) return;
+	lightEnabled[lightId] = true;
+}
+
+void DisableLight(int lightId) {
+	if (lightId < 0 || lightId > 3) return;
+	lightEnabled[lightId] = false;
 }
 
 void LoadAnimationFromRAM(Animation* anim) {
@@ -3496,9 +3752,34 @@ void Initialize3D(bool multipass, bool subBGFull) {
 	oamInit(&oamMain, SpriteMapping_Bmp_1D_128, false);
 	oamInit(&oamSub, SpriteMapping_Bmp_1D_128, false);
 
-	consoleDemoInit();
+
 #endif
 	multipassRendering = multipass;
+}
+
+void SetMaterialLightOverride(SDMaterial* material, int id, char R, char G, char B, f32 normalX, f32 normalY, f32 normalZ) {
+	unsigned short lightColor = RGB15(R, G, B);
+	unsigned short lightNormal = ((normalX / 273) & 0x1F) | (((normalY / 273) & 0x1F) << 5) | (((normalZ / 273) & 0x1F) << 10);
+	switch (id) {
+	case 0:
+		material->lightOverride0 = lightColor;
+		material->lightNormal0 = lightNormal;
+		break;
+	case 1:
+		material->lightOverride1 = lightColor;
+		material->lightNormal1 = lightNormal;
+		break;
+	case 2:
+		material->lightOverride2 = lightColor;
+		material->lightNormal2Pt0 = lightNormal & 0xFF;
+		material->lightNormal2Pt1 = (lightNormal >> 8) & 0xFF;
+		break;
+	case 3:
+		material->lightOverride3 = lightColor;
+		material->lightNormal3Pt0 = lightNormal & 0xFF;
+		material->lightNormal3Pt1 = (lightNormal >> 8) & 0xFF;
+		break;
+	}
 }
 
 // functions only used for debugging multipass...

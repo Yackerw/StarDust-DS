@@ -52,6 +52,8 @@ void DeleteVertexArrays(int count, void* ref);
 
 void EnableDepthTest();
 
+void EnableDepthTestEquals();
+
 void SetTextureWrapClamp(int UorV, unsigned int texRef);
 
 void SetTextureWrapWrap(int UorV, unsigned int texRef);
@@ -67,5 +69,7 @@ void EnableFrontfaceCulling();
 void DisableTransparency();
 
 void EnableTransparency();
+
+void DrawTriangles(unsigned int tId, int count);
 
 #endif

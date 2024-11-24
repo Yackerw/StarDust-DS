@@ -1,8 +1,17 @@
-uniform vec3 lightDirection;
-uniform vec3 lightColor;
+uniform vec4 lightDirection[4];
+uniform vec3 lightColor[4];
 uniform vec3 ambient;
+uniform int unlit;
 
 vec3 ApplyLighting(vec3 col, vec3 normal) {
-	// TODO: shadows, specular, etc
-	return col * (ambient + clamp(dot(lightDirection, normal), 0, 1) * lightColor);
+	if (unlit == 1) {
+		return vec3(1.0, 1.0, 1.0);
+	}
+	vec3 retValue = ambient;
+	for (int i = 0; i < 4; ++i) {
+		if (lightDirection[i].w != 0) {
+			retValue += clamp(dot(lightDirection[i].xyz, normal), 0, 1) * lightColor[i];
+		}
+	}
+	return retValue;
 }

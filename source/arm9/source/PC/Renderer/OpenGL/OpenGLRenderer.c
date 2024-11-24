@@ -206,7 +206,11 @@ void DisableBackfaceCulling() {
 void EnableDepthTest() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
-	//glDisable(GL_DEPTH_TEST);
+}
+
+void EnableDepthTestEquals() {
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_EQUAL);
 }
 
 void SetTextureWrapClamp(int UorV, unsigned int texRef) {

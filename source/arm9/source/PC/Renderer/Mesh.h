@@ -28,6 +28,7 @@ typedef struct {
 	bool transparent;
 	bool backFaceCulling;
 	bool frontFaceCulling;
+	bool depthEquals;
 } Material;
 #include "Texture.h"
 #include "Shader.h"

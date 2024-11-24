@@ -4,6 +4,7 @@ out vec4 color;
 uniform sampler2D mainTexture;
 uniform vec4 diffColor;
 uniform float stencil;
+uniform vec3 emissive;
 #include lighting.glh
 
 in vec2 UV;
@@ -17,9 +18,9 @@ void main() {
 		return;
 	}
 	color = texture(mainTexture, UV / textureSize(mainTexture, 0)).rgba;
-	color *= diffColor;
+	color.a *= diffColor.a;
 	if (color.a <= 0) {
 		discard;
 	}
-	color.rgb = ApplyLighting(color.rgb, normalize(normal));
+	color.rgb = color.rgb * clamp((diffColor.rgb * ApplyLighting(color.rgb, normalize(normal))) + emissive, 0, 1);
 }

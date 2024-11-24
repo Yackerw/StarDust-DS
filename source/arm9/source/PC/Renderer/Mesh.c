@@ -280,6 +280,7 @@ void InitMaterial(Material* mat) {
 	mat->transparent = false;
 	mat->frontFaceCulling = false;
 	mat->backFaceCulling = false;
+	mat->depthEquals = false;
 }
 
 void UpdateSubMesh(SubMesh* subMesh) {
@@ -359,8 +360,12 @@ void RenderSubMesh(Mesh* mesh, Material* material, SubMesh subMesh, MaterialShad
 	if (mesh->wUsed) {
 		VertexAttribPointer(mesh->vertexWeights, 4, 4, GL_FLOAT, false, 0, (void*)0);
 	}
-	// ehh change this later maybe
-	EnableDepthTest();
+	if (!material->depthEquals) {
+		EnableDepthTest();
+	}
+	else {
+		EnableDepthTestEquals();
+	}
 	// transparency, backface culling, etc
 	if (material->transparent) {
 		EnableTransparency();

@@ -493,6 +493,7 @@ void ParseShaderUniforms(char* v, Shader* shader) {
 						free(newRef);
 					}
 				}
+				i = end;
 			}
 			free(str);
 		}
