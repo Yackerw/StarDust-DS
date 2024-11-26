@@ -5,15 +5,22 @@
 #include <stdint.h>
 #define OCTREE_MAX_DEPTH 10
 #define OCTREE_MAX_TRIS 40
+// enable this to reserve DTCM to speed up collision code
+#define COLLISION_DTCM
+#define COLLISION_DTCM_SIZE 0x800 // reserve 0x800 shorts for collision DTCM data; or, in other words, 4 KB out of the 16 available
 // note: barely noticeable slowdown from this, and fixes a bug with large polygons
 #define FLOATBARY
 //#define BARY64
+
+#ifdef COLLISION_DTCM
+DTCM_DATA unsigned short staticCollisionAllocation[COLLISION_DTCM_SIZE];
+#endif
 
 // these are the same, but they're different defines for clarity anyways
 #define ShortToVec3(sh, ve) (ve).x = (sh).x; (ve).y = (sh).y; (ve).z = (sh).z
 #define Vec3ToShort(ve, sh) (sh).x = (ve).x; (sh).y = (ve).y; (sh).z = (ve).z
 
-float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
+ITCM_CODE float dotf(float x1, float y1, float z1, float x2, float y2, float z2) {
 	return x1 * x2 + y1 * y2 + z1 * z2;
 }
 
@@ -35,7 +42,7 @@ long long divf64(long long left, long long right) {
 	return (left << 12) / right;
 }
 #else
-long long dot64(Vec3* left, Vec3* right) {
+ITCM_CODE long long dot64(Vec3* left, Vec3* right) {
 	// note: i've decided to extend the precision for these by 12 bits for the barycentric calculations. it's still a net gain of 20 bits before overflow
 	long long work = ((long long)left->x * (long long)right->x);
 	long long work2 = ((long long)left->y * (long long)right->y);
@@ -43,11 +50,11 @@ long long dot64(Vec3* left, Vec3* right) {
 	return work + work2 + work3;
 }
 
-long long mulf64(long long left, long long right) {
+ITCM_CODE long long mulf64(long long left, long long right) {
 	return (left * right) >> 24;
 }
 
-long long divf64(long long left, long long right) {
+ITCM_CODE long long divf64(long long left, long long right) {
 #ifndef _NOTDS
 	REG_DIVCNT = DIV_64_64;
 
@@ -66,13 +73,13 @@ long long divf64(long long left, long long right) {
 }
 #endif
 
-void Vec3Subtractions(Vec3s* left, Vec3s* right, Vec3* out) {
+ITCM_CODE void Vec3Subtractions(Vec3s* left, Vec3s* right, Vec3* out) {
 	out->x = left->x - right->x;
 	out->y = left->y - right->y;
 	out->z = left->z - right->z;
 }
 
-Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
+ITCM_CODE Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	Vec3 v0, v1, v2;
 	Vec3Subtractions(&tri->verts[1], &tri->verts[0], &v0);
 	Vec3Subtractions(&tri->verts[2], &tri->verts[0], &v1);
@@ -142,7 +149,7 @@ Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	#endif
 }
 
-bool SphereOnPoint(CollisionSphere *sphere, Vec3 *point, f32 *penetration) {
+ITCM_CODE bool SphereOnPoint(CollisionSphere *sphere, Vec3 *point, f32 *penetration) {
 	Vec3 distance;
 	Vec3Subtraction(sphere->position, point, &distance);
 	f32 mag = SqrMagnitude(&distance);
@@ -153,7 +160,7 @@ bool SphereOnPoint(CollisionSphere *sphere, Vec3 *point, f32 *penetration) {
 	return false;
 }
 
-bool SphereOnLine(CollisionSphere *sphere, Vec3 *p1, Vec3 *p2, Vec3 *closestPoint) {
+ITCM_CODE bool SphereOnLine(CollisionSphere *sphere, Vec3 *p1, Vec3 *p2, Vec3 *closestPoint) {
 	Vec3 working;
 	Vec3 working2;
 	Vec3 working3;
@@ -196,7 +203,7 @@ bool SphereOnLine(CollisionSphere *sphere, Vec3 *p1, Vec3 *p2, Vec3 *closestPoin
 	return false;
 }
 
-bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
+ITCM_CODE bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
 	// and finally, line collision
 	for (int i = 0; i < 3; ++i) {
 		Vec3 closestPoint;
@@ -218,7 +225,7 @@ bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 
 	return false;
 }
 
-bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
+ITCM_CODE bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
 	for (int i = 0; i < 3; ++i) {
 		f32 pointMag;
 		Vec3 v;
@@ -235,11 +242,11 @@ bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec
 	return false;
 }
 
-long long dot64_2(long long x1, long long y1, long long z1, long long x2, long long y2, long long z2) {
+ITCM_CODE long long dot64_2(long long x1, long long y1, long long z1, long long x2, long long y2, long long z2) {
 	return mulf64(x1, x2) + mulf64(y1, y2) + mulf64(z1, z2);
 }
 
-bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane) {
+ITCM_CODE bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane) {
 	// adjust sphere so triangle is origin
 	Vec3 newSpherePosition;
 	newSpherePosition.x = sphere->position->x - tri->verts[0].x;
@@ -278,7 +285,7 @@ bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3
 	return false;
 }
 
-MeshCollider *LoadCollisionMesh(char *input) {
+ITCM_CODE MeshCollider *LoadCollisionMesh(char *input) {
 	FILE *f = fopen(input, "rb");
 	fseek(f, 0, SEEK_END);
 	int fileSize = ftell(f);
@@ -290,7 +297,7 @@ MeshCollider *LoadCollisionMesh(char *input) {
 	return mesh;
 }
 
-bool SphereOnSphere(CollisionSphere *sphere1, CollisionSphere *sphere2, f32 *penetration, Vec3 *normal) {
+ITCM_CODE bool SphereOnSphere(CollisionSphere *sphere1, CollisionSphere *sphere2, f32 *penetration, Vec3 *normal) {
 	// simple, just get distance
 	Vec3 sub;
 	Vec3Subtraction(sphere1->position, sphere2->position, &sub);
@@ -343,7 +350,7 @@ void GenerateBoundsForBlocks(Vec3s *min, Vec3s *max, CollisionBlock* blocks) {
 	}
 }
 
-bool AABBCheck(Vec3 *minA, Vec3 *maxA, Vec3 *minB, Vec3 *maxB) {
+ITCM_CODE bool AABBCheck(Vec3 *minA, Vec3 *maxA, Vec3 *minB, Vec3 *maxB) {
 	return (minA->x <= maxB->x &&
 		maxA->x >= minB->x &&
 		minA->y <= maxB->y &&
@@ -352,7 +359,7 @@ bool AABBCheck(Vec3 *minA, Vec3 *maxA, Vec3 *minB, Vec3 *maxB) {
 		maxA->z >= minB->z);
 }
 
-bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 leniency) {
+ITCM_CODE bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 leniency) {
 	return (minA->x <= maxB->x + leniency &&
 		maxA->x >= minB->x - leniency &&
 		minA->y <= maxB->y + leniency &&
@@ -361,7 +368,7 @@ bool AABBCheckLeniency(Vec3* minA, Vec3* maxA, Vec3* minB, Vec3* maxB, f32 lenie
 		maxA->z >= minB->z - leniency);
 }
 
-bool AABBCheckLeniencyShort(Vec3s* minA, Vec3s* maxA, Vec3s* minB, Vec3s* maxB, f32 leniency) {
+ITCM_CODE bool AABBCheckLeniencyShort(Vec3s* minA, Vec3s* maxA, Vec3s* minB, Vec3s* maxB, f32 leniency) {
 	return (minA->x <= maxB->x + leniency &&
 		maxA->x >= minB->x - leniency &&
 		minA->y <= maxB->y + leniency &&
@@ -640,7 +647,7 @@ MeshCollider *MeshColliderFromMesh(Model *input) {
 	return retValue;
 }
 
-void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, CollisionBlock* block, unsigned short** retValue, int* maxSize, int* currSize) {
+ITCM_CODE void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, CollisionBlock* block, unsigned short** retValue, int* maxSize, int* currSize) {
 	if (block->subdivided) {
 		for (int i = 0; i < 8; ++i) {
 			Vec3 blockMin, blockMax;
@@ -673,17 +680,36 @@ void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollider *mesh, C
 				retValue[0][*currSize] = block->triangleList[i];
 				++*currSize;
 				if (*currSize >= *maxSize) {
+#ifndef COLLISION_DTCM
 					*maxSize += 512;
-					retValue[0] = realloc(retValue[0], sizeof(unsigned int) * *maxSize);
+					retValue[0] = realloc(retValue[0], sizeof(unsigned short) * *maxSize);
+#else
+					if (*maxSize & 0x40000000) {
+						*maxSize &= ~0x40000000;
+						*maxSize += 512;
+						retValue[0] = malloc(sizeof(unsigned short) * *maxSize);
+						memcpy(retValue[0], staticCollisionAllocation, COLLISION_DTCM_SIZE);
+					}
+					else {
+						*maxSize += 512;
+						retValue[0] = realloc(retValue[0], sizeof(unsigned short) * *maxSize);
+					}
+#endif
 				}
 			}
 		}
 	}
 }
 
-unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris) {
+// TODO: allow multiple calls within this to allocate DTCM simultaneously (perhaps just write our own simple DTCM allocator?)
+ITCM_CODE unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris) {
+#ifndef COLLISION_DTCM
 	unsigned short* retValue = (unsigned short*)malloc(sizeof(unsigned short) * 512);
 	int maxSize = 512;
+#else
+	unsigned short* retValue = staticCollisionAllocation;
+	int maxSize = COLLISION_DTCM_SIZE | 0x40000000;
+#endif
 	int currSize = 0;
 	for (int i = 0; i < 8; ++i) {
 		Vec3 blockMin, blockMax;
@@ -702,6 +728,14 @@ unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* mesh
 		retValue[i] = i;
 	}*/
 	return retValue;
+}
+
+void ReleaseTriangleOctreeAllocation(unsigned short *tris) {
+#ifdef COLLISION_DTCM
+	// no need to do anything...
+	if (tris == staticCollisionAllocation) return;
+#endif
+	free(tris);
 }
 
 void DestroyOctree(CollisionBlock* block) {
@@ -724,7 +758,7 @@ void DestroyCollisionMesh(MeshCollider* meshCollider) {
 }
 
 // doesn't return position by default since this should rarely be used by actual game code
-bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t) {
+ITCM_CODE bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t) {
 	Vec3 workVec;
 	Vec3 newDir = *direction;
 	// division by 0 fix
@@ -803,7 +837,7 @@ bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* n
 	return tNear <= tFar && tFar >= 0;
 }
 
-bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere, f32* t, Vec3* hitPos) {
+ITCM_CODE bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere, f32* t, Vec3* hitPos) {
 	// TODO: int64 version for DS?
 	Vec3 dist;
 	Vec3Subtraction(point, sphere->position, &dist);
@@ -831,7 +865,7 @@ bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere, f32* t, 
 	return true;
 }
 
-bool RayOnPlane(Vec3* point, Vec3* direction, Vec3* normal, f32 planeDistance, f32* t, Vec3* hitPos) {
+ITCM_CODE bool RayOnPlane(Vec3* point, Vec3* direction, Vec3* normal, f32 planeDistance, f32* t, Vec3* hitPos) {
 	f32 nd = DotProduct(direction, normal);
 	f32 pn = DotProduct(point, normal);
 	// if nd is positive, they're facing the same way. no collision
@@ -853,7 +887,7 @@ bool RayOnPlane(Vec3* point, Vec3* direction, Vec3* normal, f32 planeDistance, f
 	return false;
 }
 
-bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f32* t, Vec3* hitPos) {
+ITCM_CODE bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f32* t, Vec3* hitPos) {
 	Vec3 tmpHitPos;
 	if (hitPos == NULL) {
 		hitPos = &tmpHitPos;
@@ -873,7 +907,7 @@ bool RayOnTriangle(Vec3* point, Vec3* direction, CollisionTriangle* triangle, f3
 	return false;
 }
 
-int GetQuadTreeCountSub(CollisionBlock* block) {
+ITCM_CODE int GetQuadTreeCountSub(CollisionBlock* block) {
 	// potentially recode this to do the subdivided check before calling on it, to avoid extra function calls as a minor optimization
 	int count = 0;
 	if (block->subdivided) {
@@ -889,7 +923,7 @@ int GetQuadTreeCountSub(CollisionBlock* block) {
 	return count;
 }
 
-int GetQuadTreeCount(MeshCollider* mesh) {
+ITCM_CODE int GetQuadTreeCount(MeshCollider* mesh) {
 	int count = 0;
 	for (int i = 0; i < 8; ++i) {
 		count += GetQuadTreeCountSub(&mesh->blocks[i]);
@@ -897,7 +931,7 @@ int GetQuadTreeCount(MeshCollider* mesh) {
 	return count;
 }
 
-void RaycastQuadTreeSub(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin, Vec3* AABBMax, CollisionBlock* block, CollisionBlock** hitBlocks, int* hitBlockPosition, int* triCount) {
+ITCM_CODE void RaycastQuadTreeSub(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin, Vec3* AABBMax, CollisionBlock* block, CollisionBlock** hitBlocks, int* hitBlockPosition, int* triCount) {
 	f32 t;
 	if (!block->subdivided) {
 		if (block->triCount > 0) {
@@ -922,13 +956,13 @@ void RaycastQuadTreeSub(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin,
 	}
 }
 
-void RaycastQuadTree(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin, Vec3* AABBMax, MeshCollider* mesh, CollisionBlock** hitBlocks, int* hitBlockPosition, int* triCount) {
+ITCM_CODE void RaycastQuadTree(Vec3* point, Vec3* direction, f32 length, Vec3* AABBMin, Vec3* AABBMax, MeshCollider* mesh, CollisionBlock** hitBlocks, int* hitBlockPosition, int* triCount) {
 	for (int i = 0; i < 8; ++i) {
 		RaycastQuadTreeSub(point, direction, length, AABBMin, AABBMax, &mesh->blocks[i], hitBlocks, hitBlockPosition, triCount);
 	}
 }
 
-bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* rayMax, MeshCollider* mesh, Vec3* meshOffset, Vec3* meshScale, Quaternion* meshRotation, f32* t, Vec3* hitPos, Vec3* normal, int* triId) {
+ITCM_CODE bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* rayMax, MeshCollider* mesh, Vec3* meshOffset, Vec3* meshScale, Quaternion* meshRotation, f32* t, Vec3* hitPos, Vec3* normal, int* triId) {
 
 	// attempt at optimization
 	f32 maxBounds = Max(Max(mesh->AABBBounds.x, mesh->AABBBounds.y), mesh->AABBBounds.z);
@@ -1098,7 +1132,7 @@ bool RayOnMesh(Vec3* point, Vec3* direction, f32 length, Vec3* rayMin, Vec3* ray
 	return everHit;
 }
 
-void ClosestPointAABB(Vec3* position, Vec3* boxMin, Vec3* boxMax, Vec3* out) {
+ITCM_CODE void ClosestPointAABB(Vec3* position, Vec3* boxMin, Vec3* boxMax, Vec3* out) {
 	*out = *position;
 
 	out->x = (out->x < boxMin->x) ? boxMin->x : out->x;
@@ -1111,7 +1145,7 @@ void ClosestPointAABB(Vec3* position, Vec3* boxMin, Vec3* boxMax, Vec3* out) {
 }
 
 // essentially just sphere on AABB but applying inverse rotation to the sphere
-bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3* normal, f32* t) {
+ITCM_CODE bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hitPos, Vec3* normal, f32* t) {
 	Vec3 rotatedSpherePoint, workVec;
 	Vec3Subtraction(sphere->position, box->position, &workVec);
 	Quaternion invQuat;

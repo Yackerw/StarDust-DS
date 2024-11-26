@@ -65,7 +65,7 @@ void MusicCallback(int length, char* dest) {
 	}
 }
 
-void MusicRead(int length, char* dest) {
+ITCM_CODE void MusicRead(int length, char* dest) {
 	int readSize = 1;
 	if (currMusicData.soundPosition + length * readSize >= (currMusicData.loopEnd)) {
 		int readDeficit = (currMusicData.loopEnd * readSize) - currMusicData.soundPosition;
@@ -87,7 +87,7 @@ void MusicRead(int length, char* dest) {
 	currMusicData.soundPosition = (ftell(currMusic->streamFile) - currMusic->fOffset) / currMusic->bytesPerSample;
 }
 
-void UpdateMusicBuffer() {
+ITCM_CODE void UpdateMusicBuffer() {
 	mutexLock(&musicMutex);
 	int startRead = musicBufferReadOffset;
 	int endRead = musicBufferOffset;

@@ -142,7 +142,7 @@ typedef struct {
 
 TextureQueue* firstTextureQueue;
 
-int TransparentSortFunction(void const *aa, void const *ba) {
+ITCM_CODE int TransparentSortFunction(void const *aa, void const *ba) {
 	ModelDrawCall* a = (ModelDrawCall*)aa;
 	ModelDrawCall* b = (ModelDrawCall*)ba;
 	if (a->renderPriority != b->renderPriority) {
@@ -729,6 +729,7 @@ void CacheModel(Model* reference) {
 		dsnm.FIFOBatches[i] = FIFOBatch;
 		uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
 		currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
+		DC_FlushRange(FIFOBatch, sizeof(unsigned int)* (FIFOCount + 1));
 	}
 	reference->NativeModel = malloc(sizeof(DSNativeModel));
 	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
@@ -988,17 +989,17 @@ void UpdateModel(Model* model) {
 
 #ifndef _NOTDS
 
-void PosTest(short x, short y, short z) {
+ITCM_CODE void PosTest(short x, short y, short z) {
 	GFX_POS_TEST = VERTEX_PACK(x, y);
 	GFX_POS_TEST = z;
 	while ((GFX_STATUS & 1) != 0);
 }
 
-int PosTestWResult() {
+ITCM_CODE int PosTestWResult() {
 	return GFX_POS_RESULT[3];
 }
 
-void AppendDrawCall(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator, int renderPriority) {
+ITCM_CODE void AppendDrawCall(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation, SDMaterial* mats, Animator* animator, int renderPriority) {
 	if (modelDrawCallAllocated == 0) {
 		modelDrawCallAllocated = 32;
 		modelDrawCalls = (ModelDrawCall*)malloc(sizeof(ModelDrawCall) * 32);
@@ -1023,7 +1024,7 @@ void AppendDrawCall(Model* model, Vec3* position, Vec3* scale, Quaternion* rotat
 	++modelDrawCallCount;
 }
 
-bool SetupMaterial(SDMaterial* mat, bool rigged) {
+ITCM_CODE bool SetupMaterial(SDMaterial* mat, bool rigged) {
 	// lighting notes for me:
 	// vertex colors are capped at 31 (well, 63 internally, but it's equivalent to an input of 31)
 	// highlight mode is toon shading, but RGB get used again to add to the color. this means it can actually hue shift! it's clumsy to use, however, as RGB gets used initially, then
@@ -1037,14 +1038,14 @@ bool SetupMaterial(SDMaterial* mat, bool rigged) {
 	// alpha, stencil ID, stencil compare, don't omit polygons that intersect far plane
 	uint32_t flags = POLY_ALPHA(mat->alpha) | POLY_ID(mat->stencilPack & STENCIL_VALUE) | (((mat->stencilPack & STENCIL_SHADOW_COMPARE_WRITE) != 0) ? (3 << 4) : 0) | (1 << 12);
 	bool isTransparent = mat->alpha < 31;
-	if (mat->faceCulling == BACK_CULLING) {
+	if ((mat->materialFlags0 & CULLING_MASK) == BACK_CULLING) {
 #ifdef FLIP_X
 		flags |= POLY_CULL_FRONT;
 #else
 		flags |= POLY_CULL_BACK;
 #endif
 	}
-	else if (mat->faceCulling == FRONT_CULLING) {
+	else if ((mat->materialFlags0 & CULLING_MASK) == FRONT_CULLING) {
 #ifdef FLIP_X
 		flags |= POLY_CULL_BACK;
 #else
@@ -1135,12 +1136,16 @@ bool SetupMaterial(SDMaterial* mat, bool rigged) {
 		if (diffR > 0x1F) diffR = 0x1F;
 		if (diffG > 0x1F) diffG = 0x1F;
 		if (diffB > 0x1F) diffB = 0x1F;
-		glMaterialf(GL_EMISSION, RGB15(diffR, diffG, diffB));
-		glMaterialf(GL_DIFFUSE, RGB15(mat->colorR, mat->colorG, mat->colorB));
+		//glMaterialf(GL_EMISSION, RGB15(diffR, diffG, diffB));
+		//glMaterialf(GL_DIFFUSE, RGB15(mat->colorR, mat->colorG, mat->colorB));
+		GFX_DIFFUSE_AMBIENT = RGB15(mat->colorR, mat->colorG, mat->colorB);
+		GFX_SPECULAR_EMISSION = RGB15(diffR, diffG, diffB) << 16;
 	}
 	else {
-		glMaterialf(GL_EMISSION, RGB15(mat->colorR, mat->colorG, mat->colorB));
-		glMaterialf(GL_DIFFUSE, 0);
+		//glMaterialf(GL_EMISSION, RGB15(mat->colorR, mat->colorG, mat->colorB));
+		//glMaterialf(GL_DIFFUSE, 0);
+		GFX_DIFFUSE_AMBIENT = 0;
+		GFX_SPECULAR_EMISSION = RGB15(mat->colorR, mat->colorG, mat->colorB) << 16;
 	}
 	// specular is OFFICIALLY un-supported. sorry. DS GPU sucks.
 	//glMaterialf(GL_SPECULAR, RGB15(((lightColor & 0x1F) * mat->specular) >> 8, (((lightColor >> 5) & 0x1F) * mat->specular) >> 8, (((lightColor >> 10) & 0x1F) * mat->specular) >> 8));
@@ -1161,7 +1166,16 @@ bool SetupMaterial(SDMaterial* mat, bool rigged) {
 	return isTransparent || (mat->stencilPack & STENCIL_FORCE_OPAQUE_ORDERING) != 0;
 }
 
-void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator, int renderPriority) {
+// created primarily to prevent flushing the data every time, since we seldom update that
+ITCM_CODE void DrawList(unsigned int* list) {
+	while ((DMA_CR(0) & DMA_BUSY) || (DMA_CR(1) & DMA_BUSY) || (DMA_CR(2) & DMA_BUSY) || (DMA_CR(3) & DMA_BUSY));
+	DMA_SRC(0) = ((unsigned int)list) + 4;
+	DMA_DEST(0) = 0x4000400;
+	DMA_CR(0) = DMA_FIFO | (*list);
+	while (DMA_CR(0) & DMA_BUSY);
+}
+
+ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, Animator *animator, int renderPriority) {
 	//threadSleep(1000000);
 	// set current matrix to be model matrix
 	glMatrixMode(GL_MODELVIEW);
@@ -1346,7 +1360,8 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 				continue;
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
-				glCallList((u32*)dsnm->FIFOBatches[i]);
+				//glCallList((u32*)dsnm->FIFOBatches[i]);
+				DrawList((unsigned int*)dsnm->FIFOBatches[i]);
 			}
 			if (currVertexGroup != NULL) {
 				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
@@ -1360,7 +1375,7 @@ void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quaternion *ro
 	}
 }
 
-void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, int renderPriority) {
+ITCM_CODE void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation, SDMaterial *mats, int renderPriority) {
 	// have to work around the DS' jank by omitting scale from the MODELVIEW matrix for normals, but not the POSITION matrix
 	//Vec3 matrixSize;
 	//GetMatrixLengths(matrix, &matrixSize);
@@ -1468,7 +1483,8 @@ void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion *rotation
 			}
 			if (transparentSkip) continue;
 			if (dsnm->FIFOBatches[i] != NULL) {
-				glCallList((u32*)dsnm->FIFOBatches[i]);
+				//glCallList((u32*)dsnm->FIFOBatches[i]);
+				DrawList((unsigned int*)dsnm->FIFOBatches[i]);
 			}
 			if (currVertexGroup != NULL) {
 				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
@@ -1647,7 +1663,7 @@ void UnloadTexture(Texture *tex) {
 	free(tex);
 }
 
-void RenderTransparentModels() {
+ITCM_CODE void RenderTransparentModels() {
 	qsort(modelDrawCalls, modelDrawCallCount, sizeof(ModelDrawCall), TransparentSortFunction);
 	for (int i = 0; i < modelDrawCallCount; ++i) {
 		if (modelDrawCalls[i].animator != NULL) {
@@ -2172,8 +2188,8 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 			diffColor->z = mats[i].colorB / 31.0f;
 			diffColor->w = mats[i].alpha / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
-			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
-			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
+			renderMat.backFaceCulling = (mats[i].materialFlags0 & CULLING_MASK) == BACK_CULLING;
+			renderMat.frontFaceCulling = (mats[i].materialFlags0 & CULLING_MASK) == FRONT_CULLING;
 			int* unlit = malloc(sizeof(int));
 			unlit[0] = 0;
 			if (!(mats[i].lightingFlags & LIGHT_ENABLE)) {
@@ -2345,8 +2361,8 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 			diffColor->z = mats[i].colorB / 31.0f;
 			diffColor->w = mats[i].alpha / 31.0f;
 			SetMaterialUniform(&renderMat, "diffColor", diffColor);
-			renderMat.backFaceCulling = mats[i].faceCulling == BACK_CULLING;
-			renderMat.frontFaceCulling = mats[i].faceCulling == FRONT_CULLING;
+			renderMat.backFaceCulling = (mats[i].materialFlags0 & CULLING_MASK) == BACK_CULLING;
+			renderMat.frontFaceCulling = (mats[i].materialFlags0 & CULLING_MASK) == FRONT_CULLING;
 			int* unlit = malloc(sizeof(int));
 			unlit[0] = 0;
 			if (!(mats[i].lightingFlags & LIGHT_ENABLE)) {
@@ -2489,8 +2505,8 @@ void RenderModelTransparent(ModelDrawCall* call) {
 	diffColor->z = call->subMat.colorB / 31.0f;
 	diffColor->w = call->subMat.alpha / 31.0f;
 	SetMaterialUniform(&renderMat, "diffColor", diffColor);
-	renderMat.backFaceCulling = call->subMat.faceCulling == BACK_CULLING;
-	renderMat.frontFaceCulling = call->subMat.faceCulling == FRONT_CULLING;
+	renderMat.backFaceCulling = (call->subMat.materialFlags0 & CULLING_MASK) == BACK_CULLING;
+	renderMat.frontFaceCulling = (call->subMat.materialFlags0 & CULLING_MASK) == FRONT_CULLING;
 	int* unlit = malloc(sizeof(int));
 	unlit[0] = 0;
 	if (!(call->subMat.lightingFlags & LIGHT_ENABLE)) {
@@ -2688,7 +2704,9 @@ Animator *CreateAnimator(Model *referenceModel) {
 	return retValue;
 }
 
-void UpdateAnimator(Animator *animator, Model *referenceModel) {
+const int* CLIPMTX_RESULT = (int*)0x4000640;
+
+ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 	if (animator->currAnimation == NULL || animator->paused) {
 		return;
 	}
@@ -2791,7 +2809,17 @@ void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			m4x4 w3;
 			MakeScaleMatrix(currItem->currScale.x, currItem->currScale.y, currItem->currScale.z, &w1);
 			MakeRotationMatrix(&currItem->currRotation, &w2);
+#ifdef _NOTDS
 			Combine3x3Matrices(&w1, &w2, &w3);
+#else
+			// use the matrix hardware!
+			glLoadMatrix4x4(&w1);
+			// do 4x4 for now...
+			glMultMatrix4x4(&w2);
+			for (int i = 0; i < 16; ++i) {
+				w3.m[i] = CLIPMTX_RESULT[i];
+			}
+#endif
 			w3.m[3] = currItem->currPosition.x;
 			w3.m[7] = currItem->currPosition.y;
 			w3.m[11] = currItem->currPosition.z;
@@ -2810,7 +2838,17 @@ void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			Lerp(currItem->prevScale.y, currItem->currScale.y, prevLerpAmnt), 
 			Lerp(currItem->prevScale.z, currItem->currScale.z, prevLerpAmnt), &w1);
 			MakeRotationMatrix(&slerpedQuat, &w2);
+#ifdef _NOTDS
 			Combine3x3Matrices(&w1, &w2, &w3);
+#else
+			// use the matrix hardware!
+			glLoadMatrix4x4(&w1);
+			// do 4x4 for now...
+			glMultMatrix4x4(&w2);
+			for (int i = 0; i < 16; ++i) {
+				w3.m[i] = CLIPMTX_RESULT[i];
+			}
+#endif
 			w3.m[3] = Lerp(currItem->prevPosition.x, currItem->currPosition.x, prevLerpAmnt);
 			w3.m[7] = Lerp(currItem->prevPosition.y, currItem->currPosition.y, prevLerpAmnt);
 			w3.m[11] = Lerp(currItem->prevPosition.z, currItem->currPosition.z, prevLerpAmnt);

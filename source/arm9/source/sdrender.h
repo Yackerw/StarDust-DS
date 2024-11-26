@@ -28,7 +28,7 @@ enum VertexHeaderBitflags {VTX_MATERIAL_CHANGE = 1, VTX_STRIPS = 2, VTX_QUAD = 4
 
 enum StencilBitFlags {STENCIL_VALUE = 0x1F, STENCIL_SHADOW_COMPARE_WRITE = 0x20, STENCIL_FORCE_OPAQUE_ORDERING = 0x40};
 
-enum MaterialCulling {NO_CULLING, BACK_CULLING, FRONT_CULLING};
+enum GeneralMaterialFlags {NO_CULLING = 0x0, BACK_CULLING = 0x1, FRONT_CULLING = 0x2, CULLING_MASK = 0x3, TEXTURE_TRANSFORM = 0x4};
 
 enum LightingFlags {LIGHT_ENABLE = 0x1, LIGHT_TOON_HIGHLIGHT = 0x2, LIGHT_DECAL_TEXTURE = 0x6, LIGHT_OVERRIDE0 = 0x8, LIGHT_OVERRIDE1 = 0x10, LIGHT_OVERRIDE2 = 0x20, LIGHT_OVERRIDE3 = 0x40};
 
@@ -159,6 +159,9 @@ struct Texture {
 	unsigned int paletteWrite;
 };
 
+// this is very messy now, but it was done to maintain backwards compatibility with files. these will be fixed when the 2.0 file update is finalized...
+
+
 struct SDMaterial {
 	unsigned char colorR;
 	unsigned char lightNormal2Pt0;
@@ -173,7 +176,7 @@ struct SDMaterial {
 	unsigned char lightNormal3Pt1;
 	unsigned short lightOverride3;
 	Texture *texture;
-	unsigned char faceCulling;
+	unsigned char materialFlags0;
 	unsigned char lightingFlags;
 	unsigned char padding4;
 	unsigned char stencilPack;

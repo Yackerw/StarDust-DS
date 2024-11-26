@@ -59,6 +59,8 @@ MeshCollider *MeshColliderFromMesh(Model *input);
 
 unsigned short* FindTrianglesFromOctree(Vec3* min, Vec3* max, MeshCollider* meshCollider, int *totalTris);
 
+void ReleaseTriangleOctreeAllocation(unsigned short* tris);
+
 void DestroyCollisionMesh(MeshCollider* meshCollider);
 
 bool RayOnAABB(Vec3* point, Vec3* direction, Vec3* boxMin, Vec3* boxMax, Vec3* normal, f32* t);

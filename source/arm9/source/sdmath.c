@@ -27,7 +27,10 @@
 
 #define ZeroMatrix(matrix) for(int i = 0; i < 16; ++i) {matrix->m[i] = 0;}
 
-void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
+#define mulf32fast(a, b) (((a) * (b)) >> 12)
+#define divf32fast(a, b) (((a) << 12) / (b))
+
+ITCM_CODE void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	ZeroMatrix(retValue);
 	retValue->m[r1x] = 4096;
 	retValue->m[r2y] = 4096;
@@ -38,7 +41,7 @@ void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	retValue->m[r3w] = z;
 }
 
-void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
+ITCM_CODE void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	ZeroMatrix(retValue);
 	retValue->m[r1x] = x;
 	retValue->m[r2y] = y;
@@ -46,7 +49,7 @@ void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 	retValue->m[r4w] = 4096;
 }
 
-void Combine3x3Matrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
+ITCM_CODE void Combine3x3Matrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 	retValue->m[0] = mulf32(left->m[0], right->m[0]) + mulf32(left->m[1], right->m[4]) + mulf32(left->m[2], right->m[8]);// + mulf32(left->m[3], right->m[12]);
     retValue->m[1] = mulf32(left->m[0], right->m[1]) + mulf32(left->m[1], right->m[5]) + mulf32(left->m[2], right->m[9]);// + mulf32(left->m[3], right->m[13]);
     retValue->m[2] = mulf32(left->m[0], right->m[2]) + mulf32(left->m[1], right->m[6]) + mulf32(left->m[2], right->m[10]);// + mulf32(left->m[3], right->m[14]);
@@ -69,7 +72,7 @@ void Combine3x3Matrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 }
 
 // this function is HYPER optimized, and excludes row 4. consider it a 4x3 matrix instead
-void CombineMatrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
+ITCM_CODE void CombineMatrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 	// i think this should work?
 	/*for (f32 i = 0; i < 16; i += 4) {
 		for (f32 i2 = 0; i2 < 4; ++i2) {
@@ -104,7 +107,7 @@ void CombineMatrices(m4x4 *left, m4x4 *right, m4x4 *retValue) {
 	retValue->m[15] = 4096;
 }
 
-void CombineMatricesFull(m4x4* left, m4x4* right, m4x4* retValue) {
+ITCM_CODE void CombineMatricesFull(m4x4* left, m4x4* right, m4x4* retValue) {
 	retValue->m[0] = mulf32(left->m[0], right->m[0]) + mulf32(left->m[1], right->m[4]) + mulf32(left->m[2], right->m[8]) + mulf32(left->m[3], right->m[12]);
 	retValue->m[1] = mulf32(left->m[0], right->m[1]) + mulf32(left->m[1], right->m[5]) + mulf32(left->m[2], right->m[9]) + mulf32(left->m[3], right->m[13]);
 	retValue->m[2] = mulf32(left->m[0], right->m[2]) + mulf32(left->m[1], right->m[6]) + mulf32(left->m[2], right->m[10]) + mulf32(left->m[3], right->m[14]);
@@ -126,7 +129,7 @@ void CombineMatricesFull(m4x4* left, m4x4* right, m4x4* retValue) {
 	retValue->m[15] = mulf32(left->m[12], right->m[3]) + mulf32(left->m[13], right->m[7]) + mulf32(left->m[14], right->m[11]) + mulf32(left->m[15], right->m[15]);
 }
 
-void TransposeMatrix(m4x4* input, m4x4* output) {
+ITCM_CODE void TransposeMatrix(m4x4* input, m4x4* output) {
 	output->m[r1x] = input->m[r1x];
 	output->m[r2x] = input->m[r1y];
 	output->m[r3x] = input->m[r1z];
@@ -146,7 +149,7 @@ void TransposeMatrix(m4x4* input, m4x4* output) {
 }
 
 
-void MatrixToDSMatrix(m4x4 *input, m4x4 *output) {
+ITCM_CODE void MatrixToDSMatrix(m4x4 *input, m4x4 *output) {
 #ifndef _NOTDS
 	TransposeMatrix(input, output);
 #else
@@ -154,26 +157,26 @@ void MatrixToDSMatrix(m4x4 *input, m4x4 *output) {
 #endif
 }
 
-void MakeRotationMatrix(Quaternion *input, m4x4 *retValue) {
-	f32 ww = mulf32(input->w, input->w);
-	f32 xy = mulf32(input->x, input->y);
-	f32 yz = mulf32(input->y, input->z);
-	f32 xz = mulf32(input->x, input->z);
-	f32 wx = mulf32(input->w, input->x);
-	f32 wy = mulf32(input->w, input->y);
-	f32 wz = mulf32(input->w, input->z);
+ITCM_CODE void MakeRotationMatrix(Quaternion *input, m4x4 *retValue) {
+	f32 ww = mulf32fast(input->w, input->w);
+	f32 xy = mulf32fast(input->x, input->y);
+	f32 yz = mulf32fast(input->y, input->z);
+	f32 xz = mulf32fast(input->x, input->z);
+	f32 wx = mulf32fast(input->w, input->x);
+	f32 wy = mulf32fast(input->w, input->y);
+	f32 wz = mulf32fast(input->w, input->z);
 	// oh god i have no idea what any of this means
-	retValue->m[r1x] = 2 * (ww + mulf32(input->x, input->x)) - 4096;
+	retValue->m[r1x] = 2 * (ww + mulf32fast(input->x, input->x)) - 4096;
 	retValue->m[r1y] = 2 * (xy - wz);
 	retValue->m[r1z] = 2 * (xz + wy);
 	
 	retValue->m[r2x] = 2 * (xy + wz);
-	retValue->m[r2y] = 2 * (ww + mulf32(input->y, input->y)) - 4096;
+	retValue->m[r2y] = 2 * (ww + mulf32fast(input->y, input->y)) - 4096;
 	retValue->m[r2z] = 2 * (yz - wx);
 	
 	retValue->m[r3x] = 2 * (xz - wy);
 	retValue->m[r3y] = 2 * (yz + wx);
-	retValue->m[r3z] = 2 * (ww + mulf32(input->z, input->z)) - 4096;
+	retValue->m[r3z] = 2 * (ww + mulf32fast(input->z, input->z)) - 4096;
 	
 	retValue->m[r1w] = 0;
 	retValue->m[r2w] = 0;
@@ -184,7 +187,7 @@ void MakeRotationMatrix(Quaternion *input, m4x4 *retValue) {
 	retValue->m[r4w] = 4096;
 }
 
-void EulerToQuat(f32 x, f32 y, f32 z, Quaternion *q) {
+ITCM_CODE void EulerToQuat(f32 x, f32 y, f32 z, Quaternion *q) {
 	// what in the god damn
 	f32 cy = cosLerp(z / 2);
 	f32 sy = sinLerp(z / 2);
@@ -199,14 +202,14 @@ void EulerToQuat(f32 x, f32 y, f32 z, Quaternion *q) {
 	q->z = mulf32(mulf32(cr, cp), sy) - mulf32(mulf32(sr, sp), cy);
 }
 
-void QuatTimesQuat(Quaternion *left, Quaternion *right, Quaternion *out) {
+ITCM_CODE void QuatTimesQuat(Quaternion *left, Quaternion *right, Quaternion *out) {
 	out->w = mulf32(left->w, right->w) - mulf32(left->x, right->x) - mulf32(left->y, right->y) - mulf32(left->z, right->z);
 	out->x = mulf32(left->w, right->x) + mulf32(left->x, right->w) + mulf32(left->y, right->z) - mulf32(left->z, right->y);
 	out->y = mulf32(left->w, right->y) - mulf32(left->x, right->z) + mulf32(left->y, right->w) + mulf32(left->z, right->x);
 	out->z = mulf32(left->w, right->z) + mulf32(left->x, right->y) - mulf32(left->y, right->x) + mulf32(left->z, right->w);
 }
 
-void QuatNormalize(Quaternion *input) {
+ITCM_CODE void QuatNormalize(Quaternion *input) {
 	f32 magnitude = sqrtf32(mulf32(input->x, input->x) + mulf32(input->y, input->y) + mulf32(input->z, input->z) + mulf32(input->w, input->w));
 	if (magnitude == 0) {
 		input->w = 4096;
@@ -218,7 +221,7 @@ void QuatNormalize(Quaternion *input) {
 	input->w = divf32(input->w, magnitude);
 }
 
-void QuatNormalizeFast(Quaternion* input) {
+ITCM_CODE void QuatNormalizeFast(Quaternion* input) {
 #ifndef _NOTDS
 	f32 magnitude = (input->x * input->x + input->y * input->y + input->z * input->z + input->w * input->w);
 	REG_SQRTCNT = SQRT_32;
@@ -239,16 +242,10 @@ void QuatNormalizeFast(Quaternion* input) {
 #endif
 }
 
-#define mulf32fast(a, b) (((a) * (b)) >> 12)
-#define divf32fast(a, b) (((a) << 12) / (b))
-
-void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
-	f32 cosOmega = mulf32(left->x, right->x) + mulf32(left->y, right->y) + mulf32(left->z, right->z) + mulf32(left->w, right->w);
+ITCM_CODE void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
+	f32 cosOmega = mulf32fast(left->x, right->x) + mulf32fast(left->y, right->y) + mulf32fast(left->z, right->z) + mulf32fast(left->w, right->w);
 	Quaternion usedRight;
-	usedRight.x = right->x;
-	usedRight.y = right->y;
-	usedRight.z = right->z;
-	usedRight.w = right->w;
+	usedRight = *right;
 	// flip signs if necessary to maintain shortest path
 	if (cosOmega < 0) {
 		cosOmega = -cosOmega;
@@ -271,8 +268,7 @@ void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
 		// standard slerp
 		f32 omega = acosLerp(cosOmega);
 		f32 sinOmega = sqrtf32(4096 - mulf32fast(cosOmega, cosOmega));
-		omega = mulf32(omega, RotationToFixedRadians);
-		//mulf32(divf32(omega, 32767), 25735);
+		omega = mulf32fast(omega, RotationToFixedRadians);
 		scaleFrom = divf32fast(sinLerp(mulf32fast(4096 - t, omega)), sinOmega);
 		scaleTo = divf32fast(sinLerp(mulf32fast(t, omega)), sinOmega);
 	}
@@ -285,17 +281,17 @@ void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
 	QuatNormalizeFast(out);
 }
 
-extern inline f32 DotProduct(Vec3 *left, Vec3 *right) {
+ITCM_CODE f32 DotProduct(Vec3 *left, Vec3 *right) {
 	return mulf32(left->x, right->x) + mulf32(left->y, right->y) + mulf32(left->z, right->z);
 }
 
-extern inline void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out) {
+ITCM_CODE void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = mulf32(left->y, right->z) - mulf32(left->z, right->y);
 	out->y = -(mulf32(left->x, right->z) - mulf32(left->z, right->x));
 	out->z = mulf32(left->x, right->y) - mulf32(left->y, right->x);
 }
 
-void QuatTimesVec3(Quaternion *quat, Vec3 *vec, Vec3 *out) {
+ITCM_CODE void QuatTimesVec3(Quaternion *quat, Vec3 *vec, Vec3 *out) {
 	// huh
 	Vec3 *u = (Vec3*)quat;
 	f32 dot = DotProduct(u, vec) * 2;
@@ -317,14 +313,14 @@ void QuatTimesVec3(Quaternion *quat, Vec3 *vec, Vec3 *out) {
 	out->z = temp.z + mulf32(cross.z, s);
 }
 
-void QuaternionInverse(Quaternion *quat, Quaternion *out) {
+ITCM_CODE void QuaternionInverse(Quaternion *quat, Quaternion *out) {
 	out->x = -quat->x;
 	out->y = -quat->y;
 	out->z = -quat->z;
 	out->w = quat->w;
 }
 
-void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out) {
+ITCM_CODE void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out) {
 	angle /= 2;
 	f32 s = sinLerp(angle);
 	out->x = mulf32(s, axis->x);
@@ -333,7 +329,7 @@ void QuaternionFromAngleAxis(f32 angle, Vec3 *axis, Quaternion *out) {
 	out->w = cosLerp(angle);
 }
 
-void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
+ITCM_CODE void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
 	f32 dot = DotProduct(v1, v2);
 	Vec3 a;
 	if (dot <= -4095) {
@@ -367,15 +363,15 @@ void VectorFromToRotation(Vec3 *v1, Vec3 *v2, Quaternion *out) {
 	QuatNormalize(out);
 }
 
-extern inline f32 Magnitude(Vec3 *vec) {
+ITCM_CODE f32 Magnitude(Vec3 *vec) {
 	return sqrtf32(mulf32(vec->x, vec->x) + mulf32(vec->y, vec->y) + mulf32(vec->z, vec->z));
 }
 
-extern inline f32 SqrMagnitude(Vec3 *vec) {
+ITCM_CODE f32 SqrMagnitude(Vec3 *vec) {
 	return mulf32(vec->x, vec->x) + mulf32(vec->y, vec->y) + mulf32(vec->z, vec->z);
 }
 
-extern inline void Normalize(Vec3 *vec, Vec3 *out) {
+ITCM_CODE void Normalize(Vec3 *vec, Vec3 *out) {
 	f32 magnitude = Magnitude(vec);
 	if (magnitude == 0) {
 		out->x = 0;
@@ -388,35 +384,35 @@ extern inline void Normalize(Vec3 *vec, Vec3 *out) {
 	out->z = divf32(vec->z, magnitude);
 }
 
-extern inline void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out) {
+ITCM_CODE void Vec3Addition(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = left->x + right->x;
 	out->y = left->y + right->y;
 	out->z = left->z + right->z;
 }
 
-extern inline void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out) {
+ITCM_CODE void Vec3Subtraction(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = left->x - right->x;
 	out->y = left->y - right->y;
 	out->z = left->z - right->z;
 }
 
-extern inline void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out) {
+ITCM_CODE void Vec3Multiplication(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = mulf32(left->x, right->x);
 	out->y = mulf32(left->y, right->y);
 	out->z = mulf32(left->z, right->z);
 }
 
-extern inline void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out) {
+ITCM_CODE void Vec3Division(Vec3 *left, Vec3 *right, Vec3 *out) {
 	out->x = divf32(left->x, right->x);
 	out->y = divf32(left->y, right->y);
 	out->z = divf32(left->z, right->z);
 }
 
-extern inline f32 Lerp(f32 left, f32 right, f32 t) {
+ITCM_CODE f32 Lerp(f32 left, f32 right, f32 t) {
 	return left + mulf32(t, right - left);
 }
 
-f32 Atan2(f32 y, f32 x) {
+ITCM_CODE f32 Atan2(f32 y, f32 x) {
 	// this implementation has issues in floating point for some reason *shrug*
 	const f32 b = 2442;
 	// arc tangent in first quadrant
@@ -435,7 +431,7 @@ f32 Atan2(f32 y, f32 x) {
 	return mulf32(atan_1q, FixedRadiansToRotation);
 }
 
-void Reflect(Vec3 *a, Vec3 *b, Vec3 *out) {
+ITCM_CODE void Reflect(Vec3 *a, Vec3 *b, Vec3 *out) {
 	f32 dot = DotProduct(a, b);
 	dot *= 2;
 	Vec3 tmp;
@@ -447,7 +443,7 @@ void Reflect(Vec3 *a, Vec3 *b, Vec3 *out) {
 	out->z = a->z - tmp.z;
 }
 
-extern inline f32 Clamp(f32 value, f32 min, f32 max) {
+ITCM_CODE f32 Clamp(f32 value, f32 min, f32 max) {
 	if (value > max) {
 		value = max;
 	}
@@ -457,7 +453,7 @@ extern inline f32 Clamp(f32 value, f32 min, f32 max) {
 	return value;
 }
 
-extern inline int iClamp(int value, int min, int max) {
+ITCM_CODE int iClamp(int value, int min, int max) {
 	if (value > max) {
 		value = max;
 	}
@@ -467,21 +463,21 @@ extern inline int iClamp(int value, int min, int max) {
 	return value;
 }
 
-extern inline f32 Max(f32 value, f32 max) {
+ITCM_CODE f32 Max(f32 value, f32 max) {
 	if (max > value) {
 		return max;
 	}
 	return value;
 }
 
-extern inline f32 Min(f32 value, f32 min) {
+ITCM_CODE f32 Min(f32 value, f32 min) {
 	if (min < value) {
 		return min;
 	}
 	return value;
 }
 
-extern inline f32 DeltaAngle(f32 dir1, f32 dir2)
+ITCM_CODE f32 DeltaAngle(f32 dir1, f32 dir2)
 {
 	f32 a = dir2 - dir1;
 
@@ -502,7 +498,7 @@ extern inline f32 DeltaAngle(f32 dir1, f32 dir2)
 	return a;
 }
 
-f32 Pow(f32 value, f32 toPow) {
+ITCM_CODE f32 Pow(f32 value, f32 toPow) {
 	f32 retValue;
 	if (toPow >= 4096) {
 		retValue = value;
@@ -520,7 +516,7 @@ f32 Pow(f32 value, f32 toPow) {
 	return retValue;
 }
 
-void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out) {
+ITCM_CODE void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out) {
 	Vec3 U, V;
 	U.x = vert2->x - vert1->x;
 	U.y = vert2->y - vert1->y;
@@ -538,7 +534,7 @@ void NormalFromVerts(Vec3s *vert1, Vec3s *vert2, Vec3s *vert3, Vec3s *out) {
 }
 
 // above function is unreliable at low precision
-void NormalFromVertsFloat(Vec3s* vert1, Vec3s* vert2, Vec3s* vert3, Vec3s* out) {
+ITCM_CODE void NormalFromVertsFloat(Vec3s* vert1, Vec3s* vert2, Vec3s* vert3, Vec3s* out) {
 	Vec3f U, V;
 	U.x = f32tofloat(vert2->x - vert1->x);
 	U.y = f32tofloat(vert2->y - vert1->y);
@@ -556,7 +552,7 @@ void NormalFromVertsFloat(Vec3s* vert1, Vec3s* vert2, Vec3s* vert3, Vec3s* out) 
 	out->z = floattof32(computed.z / magnitude);
 }
 
-void FrustumToMatrix(f32 xmin, f32 xmax, f32 ymin, f32 ymax, f32 near, f32 far, m4x4 *ret) {
+ITCM_CODE void FrustumToMatrix(f32 xmin, f32 xmax, f32 ymin, f32 ymax, f32 near, f32 far, m4x4 *ret) {
 	ret->m[0] = divf32(2 * near, xmax - xmin);
 	ret->m[1] = 0;
 	ret->m[2] = divf32(xmax + xmin, xmax - xmin);
@@ -575,7 +571,7 @@ void FrustumToMatrix(f32 xmin, f32 xmax, f32 ymin, f32 ymax, f32 near, f32 far, 
 	ret->m[15] = 0;
 }
 
-void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret) {
+ITCM_CODE void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret) {
 	f32 xmin, xmax, ymin, ymax;
 
 	ymax = mulf32(near, tanLerp(fov / 2));
@@ -587,21 +583,21 @@ void MakePerspectiveMatrix(f32 fov, f32 aspect, f32 near, f32 far, m4x4* ret) {
 	FrustumToMatrix(xmin, xmax, ymin, ymax, near, far, ret);
 }
 
-extern inline f32 f32Mod(f32 left, f32 right) {
+ITCM_CODE f32 f32Mod(f32 left, f32 right) {
 	return left % right;
 }
 
-extern inline void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
+ITCM_CODE void MatrixTimesVec3(m4x4 *left, Vec3 *right, Vec3 *ret) {
 	ret->x = mulf32(left->m[0], right->x) + mulf32(left->m[1], right->y) + mulf32(left->m[2], right->z) + left->m[3];
 	ret->y = mulf32(left->m[4], right->x) + mulf32(left->m[5], right->y) + mulf32(left->m[6], right->z) + left->m[7];
 	ret->z = mulf32(left->m[8], right->x) + mulf32(left->m[9], right->y) + mulf32(left->m[10], right->z) + left->m[11];
 }
 
-extern inline f32 f32abs(f32 input) {
+ITCM_CODE f32 f32abs(f32 input) {
 	return abs(input);
 }
 
-void ExtractPlanesFromProj(
+ITCM_CODE void ExtractPlanesFromProj(
 	const m4x4* mat,
 	Vec4* left, Vec4* right,
 	Vec4* bottom, Vec4* top,
@@ -622,6 +618,7 @@ void ExtractPlanesFromProj(
 	Normalize((Vec3*)far, (Vec3*)far);*/
 }
 
+// kinda omitted this one 'cause it's so seldom used
 bool InvertMatrix(const m4x4* m, m4x4* invOut)
 {
 	m4x4 inv;
@@ -753,6 +750,7 @@ bool InvertMatrix(const m4x4* m, m4x4* invOut)
 }
 
 // this function does not work on ds
+// addendum: this function may actually work on DS now, but i'm not using it
 void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut) {
 	ExtractPlanesFromProj(matrix, &frustumOut->planes[0], &frustumOut->planes[1], &frustumOut->planes[2], &frustumOut->planes[3], &frustumOut->planes[4], &frustumOut->planes[5]);
 	m4x4 inverted;
@@ -780,12 +778,12 @@ void GenerateViewFrustum(m4x4* matrix, ViewFrustum* frustumOut) {
 	MatrixTimesVec3(&inverted, &workVec, &frustumOut->points[7]);
 }
 
-int sign(int value) {
+ITCM_CODE int sign(int value) {
 	if (value < 0) { return -1; }
 	else { return 1; }
 }
 
-void QuaternionToEuler(Quaternion* quaternion, Vec3* euler) {
+ITCM_CODE void QuaternionToEuler(Quaternion* quaternion, Vec3* euler) {
 	// Roll (x-axis rotation)
 	f32 sinr_cosp = mulf32(2 * 4096, (mulf32(quaternion->w, quaternion->x) + mulf32(quaternion->y, quaternion->z)));
 	f32 cosr_cosp = 4096 - mulf32(2 * 4096, (mulf32(quaternion->x, quaternion->x) + mulf32(quaternion->y, quaternion->y)));
@@ -804,7 +802,7 @@ void QuaternionToEuler(Quaternion* quaternion, Vec3* euler) {
 	euler->z = Atan2(siny_cosp, cosy_cosp);
 }
 
-f32 f32rand(f32 min, f32 max) {
+ITCM_CODE f32 f32rand(f32 min, f32 max) {
 #ifndef _NOTDS
 	// simple int rand
 	return (rand() % (max - min)) + min;
@@ -817,7 +815,7 @@ f32 f32rand(f32 min, f32 max) {
 #endif
 }
 
-long long Int64Div(int left, int right) {
+ITCM_CODE long long Int64Div(int left, int right) {
 #ifndef _NOTDS
 	REG_DIVCNT = DIV_64_32;
 

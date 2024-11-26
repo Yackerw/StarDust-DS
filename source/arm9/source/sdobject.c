@@ -29,7 +29,7 @@ int networkedObjectsCount;
 
 bool layerCollision[1024];
 
-void DestroyObjectInternal(Object *object) {
+ITCM_CODE void DestroyObjectInternal(Object *object) {
 	if (destroyFuncs[object->objectType] != NULL) {
 		destroyFuncs[object->objectType](object);
 	}
@@ -54,7 +54,7 @@ void DestroyObjectInternal(Object *object) {
 	free(object);
 }
 
-bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo) {
+ITCM_CODE bool RaycastWorld(Vec3* point, Vec3* direction, f32 length, unsigned int layerMask, f32* t, CollisionHit* hitInfo) {
 	Object* colObject = firstObject.next;
 
 	bool everHit = false;
@@ -252,7 +252,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 					if (objsFound >= maxHit) return objsFound;
 				}
 			}
-			free(trisToCollideWith);
+			ReleaseTriangleOctreeAllocation(trisToCollideWith);
 		}
 		else if (meshObject->sphereCol != NULL) {
 			if (SphereOnSphere(sphere, meshObject->sphereCol, &hitInfos[objsFound].penetration, &hitInfos[objsFound].normal)) {
@@ -281,7 +281,7 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 	return objsFound;
 }
 
-void MoveObjectOut(f32 penetration, Vec3 *normal, CollisionSphere *sphere, Object *meshObject, CollisionSphere *newSphere) {
+ITCM_CODE void MoveObjectOut(f32 penetration, Vec3 *normal, CollisionSphere *sphere, Object *meshObject, CollisionSphere *newSphere) {
 	// adjust the normal once more
 	Vec3 rotNormal;
 	QuatTimesVec3(&meshObject->rotation, normal, &rotNormal);
@@ -297,7 +297,7 @@ void MoveObjectOut(f32 penetration, Vec3 *normal, CollisionSphere *sphere, Objec
 	Vec3Addition(sphere->position, &rotNormal, sphere->position);
 }
 
-void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sphereObject) {
+ITCM_CODE void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sphereObject) {
 	// apply blockmap
 	Vec3 rotatedPosition;
 	Vec3 tmpPos;
@@ -378,10 +378,10 @@ void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sph
 				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
 		}
 	}
-	free(trisToCollideWith);
+	ReleaseTriangleOctreeAllocation(trisToCollideWith);
 }
 
-void SphereObjOnSphereObj(Object *collider, Object* collidee) {
+ITCM_CODE void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 	f32 pen;
 	Vec3 normal;
 	if (SphereOnSphere(collider->sphereCol, collidee->sphereCol, &pen, &normal)) {
@@ -400,7 +400,7 @@ void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 	}
 }
 
-void SphereObjOnBoxObj(Object* collider, Object* collidee) {
+ITCM_CODE void SphereObjOnBoxObj(Object* collider, Object* collidee) {
 	// first, do AABB check
 	f32 maxExtents = mulf32(Max(collidee->boxCol->extents.x, Max(collidee->boxCol->extents.y, collidee->boxCol->extents.z)), 4096 + 2048);
 	f32 extentsPlusRadius = maxExtents + collider->sphereCol->radius;
@@ -427,7 +427,7 @@ void SphereObjOnBoxObj(Object* collider, Object* collidee) {
 	}
 }
 
-int GetObjectsOfType(int type, Object **out, int maxObjects) {
+ITCM_CODE int GetObjectsOfType(int type, Object **out, int maxObjects) {
 	Object *currObject = firstObject.next;
 	int currIdx = 0;
 	while (currObject != NULL) {
@@ -445,7 +445,7 @@ int GetObjectsOfType(int type, Object **out, int maxObjects) {
 
 bool multipassSecondaryBank = false;
 
-void ProcessObjects() {
+ITCM_CODE void ProcessObjects() {
 	// update networking before everything else
 	if (defaultNetInstance != NULL) {
 		UpdateNetworking(defaultNetInstance, deltaTime);
@@ -499,6 +499,14 @@ void ProcessObjects() {
 		}
 		currObject = currObject->next;
 	}
+
+	// we must ensure the projection matrix is identity here, because updateanimator uses the matrix hardware!
+#ifndef _NOTDS
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMatrixMode(GL_POSITION);
+#endif
+
 	//late update
 	currObject = firstObject.next;
 	while (currObject != NULL) {
@@ -667,7 +675,7 @@ int AddObjectType(void(*update)(Object*), void(*start)(Object*), bool(*collision
 	return retValue;
 }
 
-Object *CreateObject(int type, Vec3 *position, bool forced) {
+ITCM_CODE Object *CreateObject(int type, Vec3 *position, bool forced) {
 	if (!(forced || defaultNetInstance == NULL || (!defaultNetInstance->active || defaultNetInstance->host)) && networkedObjectTypes[type]) {
 		return NULL;
 	}
@@ -738,7 +746,7 @@ Object *CreateObject(int type, Vec3 *position, bool forced) {
 	return newObj;
 }
 
-void DestroyObject(Object *object) {
+ITCM_CODE void DestroyObject(Object *object) {
 	object->destroy = true;
 }
 
@@ -747,7 +755,7 @@ void AddCollisionBetweenLayers(int layer1, int layer2) {
 	layerCollision[layer1+(layer2*32)] = true;
 }
 
-void GetObjectPtr(Object* object, ObjectPtr* out) {
+ITCM_CODE void GetObjectPtr(Object* object, ObjectPtr* out) {
 	out->next = object->references.next;
 	out->prev = &object->references;
 	if (out->next != NULL) {
@@ -757,7 +765,7 @@ void GetObjectPtr(Object* object, ObjectPtr* out) {
 	out->object = object;
 }
 
-void FreeObjectPtr(ObjectPtr* ptr) {
+ITCM_CODE void FreeObjectPtr(ObjectPtr* ptr) {
 	// it's already been freed...
 	if (ptr->object == NULL) {
 		return;
@@ -769,7 +777,7 @@ void FreeObjectPtr(ObjectPtr* ptr) {
 	ptr->object = NULL;
 }
 
-void SyncObjectPacketSend(Object* object, void* data, int dataLen, unsigned short type, bool important) {
+ITCM_CODE void SyncObjectPacketSend(Object* object, void* data, int dataLen, unsigned short type, bool important) {
 	if (object->netId == -1 || !defaultNetInstance->active) return;
 	char* ou = (char*)malloc(dataLen + sizeof(int) * 3);
 	((int*)ou)[0] = object->netId;
@@ -782,7 +790,7 @@ void SyncObjectPacketSend(Object* object, void* data, int dataLen, unsigned shor
 	PacketSendAll(ou, dataLen + sizeof(int) * 3, objPacketId, important, defaultNetInstance);
 }
 
-void SyncObjectPacketReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
+ITCM_CODE void SyncObjectPacketReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
 	if (!instance->host) {
 		node = ((int*)data)[1];
 	}
@@ -808,7 +816,7 @@ void SyncObjectPacketReceive(void* data, int dataLen, int node, NetworkInstance*
 	}
 }
 
-void SyncObjectCreateReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
+ITCM_CODE void SyncObjectCreateReceive(void* data, int dataLen, int node, NetworkInstance* instance) {
 	// host should authenticate all object creations!
 	if (instance->host) {
 		return;
@@ -864,7 +872,7 @@ void StopSyncingObject(Object* obj) {
 	obj->netId = -1;
 }
 
-void SyncAllObjects(int node) {
+ITCM_CODE void SyncAllObjects(int node) {
 	if (!defaultNetInstance->host) {
 		return;
 	}
