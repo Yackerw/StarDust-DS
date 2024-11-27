@@ -1268,7 +1268,7 @@ ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quat
 		for (int i = 0; i < vertGroupCount; ++i) {
 			if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
 				transparentSkip = skipTransparentOrOpaque;
-				if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+				if (SetupMaterial(&mats[currVertexGroup->material], true)) {
 					transparentSkip = !skipTransparentOrOpaque;
 					if (renderPriority != RENDER_PRIO_RESERVED) {
 						if (!modelQueued) {
@@ -1338,12 +1338,21 @@ ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quat
 		for (int i = 0; i < dsnm->FIFOCount; ++i) {
 			// uh oh!! we can free except the cache!! assume in order then!!
 			if (currVertexGroup == NULL) {
-				SetupMaterial(&mats[i], true);
+				transparentSkip = skipTransparentOrOpaque;
+				if (SetupMaterial(&mats[i], true)) {
+					transparentSkip = !skipTransparentOrOpaque;
+					if (renderPriority != RENDER_PRIO_RESERVED) {
+						if (!modelQueued) {
+							AppendDrawCall(model, position, scale, rotation, mats, animator, renderPriority);
+						}
+						continue;
+					}
+				}
 			}
 			else {
 				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
 					transparentSkip = skipTransparentOrOpaque;
-					if (SetupMaterial(&mats[currVertexGroup->material], false)) {
+					if (SetupMaterial(&mats[currVertexGroup->material], true)) {
 						transparentSkip = !skipTransparentOrOpaque;
 						if (renderPriority != RENDER_PRIO_RESERVED) {
 							if (!modelQueued) {
@@ -1356,6 +1365,9 @@ ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quat
 				}
 			}
 			if (transparentSkip) {
+				if (currVertexGroup != NULL) {
+					currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+				}
 				continue;
 			}
 			if (dsnm->FIFOBatches[i] != NULL) {
@@ -1453,15 +1465,21 @@ ITCM_CODE void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion
 		}
 	 }
 	else {
-		for (int i = 0; i < model->skeletonCount; ++i) {
-			glPushMatrix();
-			glRestoreMatrix(0);
-		}
 		DSNativeModel* dsnm = model->NativeModel;
 		for (int i = 0; i < dsnm->FIFOCount; ++i) {
 			// uh oh!! we can free except the cache!! assume in order then!!
 			if (currVertexGroup == NULL) {
-				SetupMaterial(&mats[i], false);
+				transparentSkip = skipTransparentOrOpaque;
+				if (SetupMaterial(&mats[i], false)) {
+					transparentSkip = !skipTransparentOrOpaque;
+					if (renderPriority != RENDER_PRIO_RESERVED) {
+						if (!modelQueued) {
+							AppendDrawCall(model, position, scale, rotation, mats, NULL, renderPriority);
+							modelQueued = true;
+						}
+						continue;
+					}
+				}
 			}
 			else {
 				if (currVertexGroup->bitFlags & VTX_MATERIAL_CHANGE) {
@@ -1479,7 +1497,12 @@ ITCM_CODE void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion
 					}
 				}
 			}
-			if (transparentSkip) continue;
+			if (transparentSkip) {
+				if (currVertexGroup != NULL) {
+					currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
+				}
+				continue;
+			}
 			if (dsnm->FIFOBatches[i] != NULL) {
 				//glCallList((u32*)dsnm->FIFOBatches[i]);
 				DrawList((unsigned int*)dsnm->FIFOBatches[i]);
@@ -1488,7 +1511,6 @@ ITCM_CODE void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion
 				currVertexGroup = (VertexHeader*)((uint32_t)(&(currVertexGroup->vertices)) + (uint32_t)(sizeof(Vertex) * (currVertexGroup->count)));
 			}
 		}
-		glPopMatrix(model->skeletonCount);
 	}
 }
 
@@ -2612,6 +2634,10 @@ void DisableLight(int lightId) {
 void LoadAnimationFromRAM(Animation* anim) {
 	for (int i = 0; i < anim->keyframeSetCount; ++i) {
 		anim->sets[i] = (KeyframeSet*)((uint32_t)anim->sets[i] + (uint32_t)anim);
+		for (int j = 0; j < anim->sets[i]->keyframeCount; ++j) {
+			// conversion to 3 bit decimal for optimized animator updating...
+			anim->sets[i]->keyframes[j].frame >>= 9;
+		}
 	}
 }
 
@@ -2702,6 +2728,10 @@ Animator *CreateAnimator(Model *referenceModel) {
 	return retValue;
 }
 
+ITCM_CODE f32 LerpAnimator(f32 left, f32 right, i29d3 t) {
+	return left + ((t * (right - left)) >> 3);
+}
+
 const int* CLIPMTX_RESULT = (int*)0x4000640;
 
 ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
@@ -2735,6 +2765,7 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			--animator->queuedAnimCount;
 		}
 	}
+	int animCurrFrame = animator->currFrame >> 9;
 	int currKeyFrame = 0;
 	for (int i = 0; i < animator->currAnimation->keyframeSetCount; ++i) {
 		KeyframeSet *currSet = animator->currAnimation->sets[i];
@@ -2750,11 +2781,11 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 		Keyframe *leftKeyframe = &currSet->keyframes[currKeyFrame];
 		Keyframe *rightKeyframe = &currSet->keyframes[currKeyFrame];
 		// catch it out if it's wrong
-		if (leftKeyframe->frame >= animator->currFrame) {
+		if (leftKeyframe->frame >= animCurrFrame) {
 			currKeyFrame = 0;
 		}
 		for (int i2 = currKeyFrame; i2 < currSet->keyframeCount; ++i2) {
-			if (animator->currFrame < currSet->keyframes[i2].frame) {
+			if (animCurrFrame < currSet->keyframes[i2].frame) {
 				rightKeyframe = &currSet->keyframes[i2];
 				int maxKeyframe = i2 - 1;
 				if (maxKeyframe < 0) {
@@ -2766,22 +2797,23 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			}
 		}
 		// previous and next key frame acquired, now simply lerp between them
-		f32 lerpAmnt = divf32(animator->currFrame - leftKeyframe->frame, rightKeyframe->frame - leftKeyframe->frame);
+		f32 lerpAmnt = ((animCurrFrame - leftKeyframe->frame) << 3) / (rightKeyframe->frame - leftKeyframe->frame); //divf32(animator->currFrame - leftKeyframe->frame, rightKeyframe->frame - leftKeyframe->frame);
 		switch (currSet->type) {
 			case 0: {
-				QuatSlerp(&leftKeyframe->data.rotation, &rightKeyframe->data.rotation, &animator->items[currSet->target].currRotation, lerpAmnt);
+				// no way around this one, have to convert the lerpamnt to f32
+				QuatSlerp(&leftKeyframe->data.rotation, &rightKeyframe->data.rotation, &animator->items[currSet->target].currRotation, lerpAmnt << 9);
 				}
 				break;
 			case 1: {
-				animator->items[currSet->target].currPosition.x = Lerp(leftKeyframe->data.position.x, rightKeyframe->data.position.x, lerpAmnt);
-				animator->items[currSet->target].currPosition.y = Lerp(leftKeyframe->data.position.y, rightKeyframe->data.position.y, lerpAmnt);
-				animator->items[currSet->target].currPosition.z = Lerp(leftKeyframe->data.position.z, rightKeyframe->data.position.z, lerpAmnt);
+				animator->items[currSet->target].currPosition.x = LerpAnimator(leftKeyframe->data.position.x, rightKeyframe->data.position.x, lerpAmnt);
+				animator->items[currSet->target].currPosition.y = LerpAnimator(leftKeyframe->data.position.y, rightKeyframe->data.position.y, lerpAmnt);
+				animator->items[currSet->target].currPosition.z = LerpAnimator(leftKeyframe->data.position.z, rightKeyframe->data.position.z, lerpAmnt);
 				}
 				break;
 			case 2: {
-				animator->items[currSet->target].currScale.x = Lerp(leftKeyframe->data.scale.x, rightKeyframe->data.scale.x, lerpAmnt);
-				animator->items[currSet->target].currScale.y = Lerp(leftKeyframe->data.scale.y, rightKeyframe->data.scale.y, lerpAmnt);
-				animator->items[currSet->target].currScale.z = Lerp(leftKeyframe->data.scale.z, rightKeyframe->data.scale.z, lerpAmnt);
+				animator->items[currSet->target].currScale.x = LerpAnimator(leftKeyframe->data.scale.x, rightKeyframe->data.scale.x, lerpAmnt);
+				animator->items[currSet->target].currScale.y = LerpAnimator(leftKeyframe->data.scale.y, rightKeyframe->data.scale.y, lerpAmnt);
+				animator->items[currSet->target].currScale.z = LerpAnimator(leftKeyframe->data.scale.z, rightKeyframe->data.scale.z, lerpAmnt);
 				}
 				break;
 		}

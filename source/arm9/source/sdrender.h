@@ -34,6 +34,8 @@ enum LightingFlags {LIGHT_ENABLE = 0x1, LIGHT_TOON_HIGHLIGHT = 0x2, LIGHT_DECAL_
 
 #define RENDER_PRIO_RESERVED 0x80000000
 
+typedef int i29d3;
+
 typedef struct {
 	v16 x;
 	v16 y;
@@ -90,7 +92,7 @@ union KeyframeData {
 };
 
 typedef struct {
-	f32 frame;
+	i29d3 frame;
 	union KeyframeData data;
 } Keyframe;
 
