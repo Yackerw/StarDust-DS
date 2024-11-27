@@ -116,6 +116,40 @@ typedef struct {
 #define FixedRadiansToRotation 5215
 #define RotationToFixedRadians 3217
 
+// values for matrix computations...
+#define r1x 0
+#define r1y 4
+#define r1z 8
+#define r1w 12
+#define r2x 1
+#define r2y 5
+#define r2z 9
+#define r2w 13
+#define r3x 2
+#define r3y 6
+#define r3z 10
+#define r3w 14
+#define r4x 3
+#define r4y 7
+#define r4z 11
+#define r4w 15
+/*#define r1x 0
+#define r1y 1
+#define r1z 2
+#define r1w 3
+#define r2x 4
+#define r2y 5
+#define r2z 6
+#define r2w 7
+#define r3x 8
+#define r3y 9
+#define r3z 10
+#define r3w 11
+#define r4x 12
+#define r4y 13
+#define r4z 14
+#define r4w 15*/
+
 void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue);
 
 void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue);
@@ -129,8 +163,6 @@ void CombineMatricesFull(m4x4* left, m4x4* right, m4x4* retValue);
 void MakeRotationMatrix(Quaternion *input, m4x4 *retValue);
 
 void TransposeMatrix(m4x4* input, m4x4* output);
-
-void MatrixToDSMatrix(m4x4 *input, m4x4 *output);
 
 void EulerToQuat(f32 x, f32 y, f32 z, Quaternion *q);
 

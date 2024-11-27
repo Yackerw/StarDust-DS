@@ -14,8 +14,7 @@ out vec2 UV;
 out vec3 normal;
 
 void main() {
-	gl_Position = MVP * vec4(iVert.xyz, 1);
-	normal = normalize(transpose(inverse(mat3(M))) * iNormal);
-	//normal = iNormal;
+	gl_Position = vec4(iVert.xyz, 1) * MVP;
+	normal = normalize(iNormal * transpose(inverse(mat3(M))));
 	UV = iUV;
 }

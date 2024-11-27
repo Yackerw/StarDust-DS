@@ -18,8 +18,7 @@ out vec2 UV;
 out vec3 normal;
 
 void main() {
-	gl_Position = MVP * ApplyRig(vec4(iVert.xyz, 1), boneIndices, boneWeights);
-	normal = normalize(transpose(inverse(mat3(M))) * ApplyRigNormal(normalize(iNormal), boneIndices.xyzw, boneWeights));
-	//normal = iNormal;
+	gl_Position = ApplyRig(vec4(iVert.xyz, 1), boneIndices, boneWeights) * MVP;
+	normal = normalize(ApplyRigNormal(normalize(iNormal), boneIndices.xyzw, boneWeights) * transpose(inverse(mat3(M))));
 	UV = iUV;
 }

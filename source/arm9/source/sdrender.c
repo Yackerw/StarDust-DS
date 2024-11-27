@@ -207,7 +207,8 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 		retValue->skeleton = (Bone*)((uint32_t)retValue + (uint32_t)retValue->skeleton);
 		for (int i = 0; i < retValue->skeletonCount; ++i) {
 			m4x4 tempMtx;
-			MatrixToDSMatrix(&retValue->skeleton[i].inverseMatrix, &tempMtx);
+			//MatrixToDSMatrix(&retValue->skeleton[i].inverseMatrix, &tempMtx);
+			TransposeMatrix(&retValue->skeleton[i].inverseMatrix, &tempMtx);
 			memcpy(&retValue->skeleton[i].inverseMatrix, &tempMtx, sizeof(m4x4));
 		}
 	}
@@ -253,6 +254,7 @@ void SetupModelFromMemory(Model* model, char* textureDir, bool asyncTextures, vo
 	}
 
 	CacheModel(retValue);
+	//retValue->NativeModel = NULL;
 
 #ifdef _NOTDS
 	UpdateModel(model);
@@ -602,6 +604,7 @@ void CacheRiggedModel(Model* reference) {
 		dsnm.FIFOBatches[i] = FIFOBatch;
 		uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
 		currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
+		DC_FlushRange(FIFOBatch, sizeof(unsigned int) * (FIFOCount + 1));
 	}
 	reference->NativeModel = malloc(sizeof(DSNativeModel));
 	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
@@ -729,7 +732,7 @@ void CacheModel(Model* reference) {
 		dsnm.FIFOBatches[i] = FIFOBatch;
 		uint32_t toAdd = (sizeof(Vertex) * (currHeader->count));
 		currHeader = (VertexHeader*)(((uint32_t)(&(currHeader->vertices))) + toAdd);
-		DC_FlushRange(FIFOBatch, sizeof(unsigned int)* (FIFOCount + 1));
+		DC_FlushRange(FIFOBatch, sizeof(unsigned int) * (FIFOCount + 1));
 	}
 	reference->NativeModel = malloc(sizeof(DSNativeModel));
 	DSNativeModel* dsnmptr = (DSNativeModel*)reference->NativeModel;
@@ -1192,13 +1195,11 @@ ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quat
 	}
 	// set up base object matrix
 	m4x4 rotationMatrix;
-	m4x4 rotationMatrixPrepared;
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	rotationMatrix.m[3] = position->x - cameraRecentering.x;
-	rotationMatrix.m[7] = position->y - cameraRecentering.y;
-	rotationMatrix.m[11] = position->z - cameraRecentering.z;
-	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
-	glLoadMatrix4x4(&rotationMatrixPrepared);
+	rotationMatrix.m[r1w] = position->x - cameraRecentering.x;
+	rotationMatrix.m[r2w] = position->y - cameraRecentering.y;
+	rotationMatrix.m[r3w] = position->z - cameraRecentering.z;
+	glLoadMatrix4x4(&rotationMatrix);
 	glScalef32(scale->x, scale->y, scale->z);
 	glStoreMatrix(lastBone);
 
@@ -1252,13 +1253,11 @@ ITCM_CODE void RenderModelRigged(Model *model, Vec3 *position, Vec3 *scale, Quat
 	m4x4 matrix;
 	if (model->skeletonCount > 31) {
 		m4x4 scaleMatrix;
-		m4x4 workMatrix;
 		MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
-		CombineMatrices(&scaleMatrix, &rotationMatrix, &workMatrix);
-		MatrixToDSMatrix(&workMatrix, &matrix);
-		matrix.m[3] = position->x;
-		matrix.m[7] = position->y;
-		matrix.m[11] = position->z;
+		CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
+		matrix.m[r1w] = position->x;
+		matrix.m[r2w] = position->y;
+		matrix.m[r3w] = position->z;
 	}
 	bool skipTransparentOrOpaque = renderPriority == RENDER_PRIO_RESERVED;
 	bool transparentSkip = skipTransparentOrOpaque;
@@ -1385,11 +1384,10 @@ ITCM_CODE void RenderModel(Model *model, Vec3 *position, Vec3 *scale, Quaternion
 	m4x4 rotationMatrix;
 	m4x4 rotationMatrixPrepared;
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	rotationMatrix.m[3] = position->x - cameraRecentering.x;
-	rotationMatrix.m[7] = position->y - cameraRecentering.y;
-	rotationMatrix.m[11] = position->z - cameraRecentering.z;
-	MatrixToDSMatrix(&rotationMatrix, &rotationMatrixPrepared);
-	glLoadMatrix4x4(&rotationMatrixPrepared);
+	rotationMatrix.m[r1w] = position->x - cameraRecentering.x;
+	rotationMatrix.m[r2w] = position->y - cameraRecentering.y;
+	rotationMatrix.m[r3w] = position->z - cameraRecentering.z;
+	glLoadMatrix4x4(&rotationMatrix);
 	glScalef32(scale->x, scale->y, scale->z);
 
 	// hardware AABB test
@@ -2096,9 +2094,9 @@ void RenderModel(Model* model, Vec3* position, Vec3* scale, Quaternion* rotation
 	m4x4 rotationMatrix;
 	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	scaleMatrix.m[3] = position->x - cameraRecentering.x;
-	scaleMatrix.m[7] = position->y - cameraRecentering.y;
-	scaleMatrix.m[11] = position->z - cameraRecentering.z;
+	scaleMatrix.m[r1w] = position->x - cameraRecentering.x;
+	scaleMatrix.m[r2w] = position->y - cameraRecentering.y;
+	scaleMatrix.m[r3w] = position->z - cameraRecentering.z;
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
@@ -2227,9 +2225,9 @@ void RenderModelRigged(Model* model, Vec3* position, Vec3* scale, Quaternion* ro
 	m4x4 rotationMatrix;
 	MakeScaleMatrix(scale->x, scale->y, scale->z, &scaleMatrix);
 	MakeRotationMatrix(rotation, &rotationMatrix);
-	scaleMatrix.m[3] = position->x - cameraRecentering.x;
-	scaleMatrix.m[7] = position->y - cameraRecentering.y;
-	scaleMatrix.m[11] = position->z - cameraRecentering.z;
+	scaleMatrix.m[r1w] = position->x - cameraRecentering.x;
+	scaleMatrix.m[r2w] = position->y - cameraRecentering.y;
+	scaleMatrix.m[r3w] = position->z - cameraRecentering.z;
 	CombineMatrices(&scaleMatrix, &rotationMatrix, &matrix);
 	m4x4 MVP;
 	CombineMatricesFull(&cameraMatrix, &matrix, &MVP);
@@ -2696,10 +2694,10 @@ Animator *CreateAnimator(Model *referenceModel) {
 		MakeScaleMatrix(currItem->currScale.x, currItem->currScale.y, currItem->currScale.z, &w1);
 		MakeRotationMatrix(&currItem->currRotation, &w2);
 		Combine3x3Matrices(&w1, &w2, &w3);
-		w3.m[3] = currItem->currPosition.x;
-		w3.m[7] = currItem->currPosition.y;
-		w3.m[11] = currItem->currPosition.z;
-		MatrixToDSMatrix(&w3, &retValue->items[i].matrix);
+		w3.m[r1w] = currItem->currPosition.x;
+		w3.m[r2w] = currItem->currPosition.y;
+		w3.m[r3w] = currItem->currPosition.z;
+		memcpy(&w3, &retValue->items[i].matrix, sizeof(m4x4));
 	}
 	return retValue;
 }
@@ -2806,24 +2804,23 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			// i choose...optimization, here.
 			m4x4 w1;
 			m4x4 w2;
-			m4x4 w3;
 			MakeScaleMatrix(currItem->currScale.x, currItem->currScale.y, currItem->currScale.z, &w1);
 			MakeRotationMatrix(&currItem->currRotation, &w2);
 #ifdef _NOTDS
-			Combine3x3Matrices(&w1, &w2, &w3);
+			Combine3x3Matrices(&w1, &w2, &animator->items[i].matrix);
 #else
 			// use the matrix hardware!
-			glLoadMatrix4x4(&w1);
+			glLoadMatrix4x4(&w2);
 			// do 4x4 for now...
-			glMultMatrix4x4(&w2);
-			for (int i = 0; i < 16; ++i) {
-				w3.m[i] = CLIPMTX_RESULT[i];
+			glMultMatrix4x4(&w1);
+			for (int j = 0; j < 16; ++j) {
+				animator->items[i].matrix.m[j] = CLIPMTX_RESULT[j];
 			}
 #endif
-			w3.m[3] = currItem->currPosition.x;
-			w3.m[7] = currItem->currPosition.y;
-			w3.m[11] = currItem->currPosition.z;
-			MatrixToDSMatrix(&w3, &animator->items[i].matrix);
+			animator->items[i].matrix.m[r1w] = currItem->currPosition.x;
+			animator->items[i].matrix.m[r2w] = currItem->currPosition.y;
+			animator->items[i].matrix.m[r3w] = currItem->currPosition.z;
+			//MatrixToDSMatrix(&w3, &animator->items[i].matrix);
 		}
 	} else {
 		for (int i = 0; i < animator->itemCount; ++i) {
@@ -2831,7 +2828,6 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			// i choose...optimization, here.
 			m4x4 w1;
 			m4x4 w2;
-			m4x4 w3;
 			Quaternion slerpedQuat;
 			QuatSlerp(&currItem->prevRotation, &currItem->currRotation, &slerpedQuat, prevLerpAmnt);
 			MakeScaleMatrix(Lerp(currItem->prevScale.x, currItem->currScale.x, prevLerpAmnt),
@@ -2839,20 +2835,20 @@ ITCM_CODE void UpdateAnimator(Animator *animator, Model *referenceModel) {
 			Lerp(currItem->prevScale.z, currItem->currScale.z, prevLerpAmnt), &w1);
 			MakeRotationMatrix(&slerpedQuat, &w2);
 #ifdef _NOTDS
-			Combine3x3Matrices(&w1, &w2, &w3);
+			Combine3x3Matrices(&w1, &w2, &animator->items[i].matrix);
 #else
 			// use the matrix hardware!
-			glLoadMatrix4x4(&w1);
+			glLoadMatrix4x4(&w2);
 			// do 4x4 for now...
-			glMultMatrix4x4(&w2);
-			for (int i = 0; i < 16; ++i) {
-				w3.m[i] = CLIPMTX_RESULT[i];
+			glMultMatrix4x4(&w1);
+			for (int j = 0; j < 16; ++j) {
+				animator->items[i].matrix.m[j] = CLIPMTX_RESULT[j];
 			}
 #endif
-			w3.m[3] = Lerp(currItem->prevPosition.x, currItem->currPosition.x, prevLerpAmnt);
-			w3.m[7] = Lerp(currItem->prevPosition.y, currItem->currPosition.y, prevLerpAmnt);
-			w3.m[11] = Lerp(currItem->prevPosition.z, currItem->currPosition.z, prevLerpAmnt);
-			MatrixToDSMatrix(&w3, &animator->items[i].matrix);
+			animator->items[i].matrix.m[r1w] = Lerp(currItem->prevPosition.x, currItem->currPosition.x, prevLerpAmnt);
+			animator->items[i].matrix.m[r2w] = Lerp(currItem->prevPosition.y, currItem->currPosition.y, prevLerpAmnt);
+			animator->items[i].matrix.m[r3w] = Lerp(currItem->prevPosition.z, currItem->currPosition.z, prevLerpAmnt);
+			//MatrixToDSMatrix(&w3, &animator->items[i].matrix);
 		}
 	}
 }
@@ -3571,9 +3567,9 @@ void SetupCameraMatrix() {
 	m4x4 camRotation;
 	MakeRotationMatrix(&inverseCamRot, &camRotation);
 	CombineMatrices(&camRotation, &camTransform, &cameraMatrix);
-	m4x4 trueCameraMatrix;
-	MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
-	glMultMatrix4x4(&trueCameraMatrix);
+	//m4x4 trueCameraMatrix;
+	//MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
+	glMultMatrix4x4(&cameraMatrix);
 
 	// set viewport to be size of screen
 	glViewport(0, 0, 255, 191);
@@ -3618,9 +3614,9 @@ void SetupCameraMatrixPartial(int x, int y, int width, int height) {
 	m4x4 camRotation;
 	MakeRotationMatrix(&inverseCamRot, &camRotation);
 	CombineMatrices(&camRotation, &camTransform, &cameraMatrix);
-	m4x4 trueCameraMatrix;
-	MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
-	glMultMatrix4x4(&trueCameraMatrix);
+	//m4x4 trueCameraMatrix;
+	//MatrixToDSMatrix(&cameraMatrix, &trueCameraMatrix);
+	glMultMatrix4x4(&cameraMatrix);
 
 	glViewport(x, y, (x+width)-1, (y+height)-1);
 }
@@ -3661,7 +3657,9 @@ void SetupCameraMatrix() {
 	CombineMatrices(&camRotation, &camTranslation, &cameraMatrix);
 	m4x4 trueCameraMatrix;
 	CombineMatricesFull(&perspectiveMatrix, &cameraMatrix, &trueCameraMatrix);
-	MatrixToDSMatrix(&trueCameraMatrix, &cameraMatrix);
+	cameraMatrix = trueCameraMatrix;
+	//TransposeMatrix(&trueCameraMatrix, &cameraMatrix);
+	//MatrixToDSMatrix(&trueCameraMatrix, &cameraMatrix);
 	GenerateViewFrustum(&cameraMatrix, &frustum);
 }
 #endif
@@ -3674,7 +3672,6 @@ f32 DotProduct4(Vec4* left, Vec4* right) {
 
 bool AABBInCamera(Vec3* min, Vec3* max, m4x4* transform) {
 #ifdef _NOTDS
-	// TODO
 	Vec3 newMin, newMax;
 	MatrixTimesVec3(transform, min, &newMin);
 	MatrixTimesVec3(transform, max, &newMax);
