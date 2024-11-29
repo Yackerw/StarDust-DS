@@ -281,20 +281,16 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 	return objsFound;
 }
 
-ITCM_CODE void MoveObjectOut(f32 penetration, Vec3 *normal, CollisionSphere *sphere, Object *meshObject, CollisionSphere *newSphere) {
-	// adjust the normal once more
-	Vec3 rotNormal;
-	QuatTimesVec3(&meshObject->rotation, normal, &rotNormal);
+ITCM_CODE void MoveObjectOut(f32 penetration, Vec3 *normal, f32 newPenetration, Vec3 *newNormal, CollisionSphere *sphere, Object *meshObject, CollisionSphere *newSphere) {
 	// adjust our local space
+	newNormal->x = mulf32(newNormal->x, newPenetration);
+	newNormal->y = mulf32(newNormal->y, newPenetration);
+	newNormal->z = mulf32(newNormal->z, newPenetration);
+	Vec3Addition(newSphere->position, newNormal, newSphere->position);
 	normal->x = mulf32(normal->x, penetration);
 	normal->y = mulf32(normal->y, penetration);
 	normal->z = mulf32(normal->z, penetration);
-	Vec3Addition(newSphere->position, normal, newSphere->position);
-	penetration = mulf32(penetration, meshObject->scale.x);
-	rotNormal.x = mulf32(penetration, rotNormal.x);
-	rotNormal.y = mulf32(penetration, rotNormal.y);
-	rotNormal.z = mulf32(penetration, rotNormal.z);
-	Vec3Addition(sphere->position, &rotNormal, sphere->position);
+	Vec3Addition(sphere->position, normal, sphere->position);
 }
 
 ITCM_CODE void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, Object *sphereObject) {
@@ -346,15 +342,22 @@ ITCM_CODE void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, O
 	CollisionHit hitInfo;
 	hitInfo.colliderType = COLLIDER_MESH;
 	hitInfo.hitObject = meshObject;
+	Vec3 localNormal;
+	f32 localPen;
 	// now check them once more for whether they're on the plane
 	// we check them one at a time like this because otherwise you'll get caught up on lines and verts when you should
 	// be on a flat surface
 	for (int i = 0; i < totalTris; ++i) {
 		bool onPlane;
-		if (SphereOnTrianglePlane(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration, &onPlane)) {
+		if (SphereOnTrianglePlane(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &localNormal, &localPen, &onPlane)) {
 			hitInfo.hitTri = trisToCollideWith[i];
+			hitInfo.penetration = mulf32(meshObject->scale.x, localPen);
+			QuatTimesVec3(&meshObject->rotation, &localNormal, &hitInfo.normal);
+			hitInfo.hitPos.x = mulf32(hitInfo.normal.x, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.y = mulf32(hitInfo.normal.y, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.z = mulf32(hitInfo.normal.z, sphere->radius - hitInfo.penetration);
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
-				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, localPen, &localNormal, sphere, meshObject, &newSphere);
 			trisToCollideWith[i] = 0xFFFF;
 		}
 		if (!onPlane) {
@@ -363,19 +366,29 @@ ITCM_CODE void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, O
 	}
 	// lines...
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleLine(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &localNormal, &localPen)) {
 			hitInfo.hitTri = trisToCollideWith[i];
+			hitInfo.penetration = mulf32(meshObject->scale.x, localPen);
+			QuatTimesVec3(&meshObject->rotation, &localNormal, &hitInfo.normal);
+			hitInfo.hitPos.x = mulf32(hitInfo.normal.x, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.y = mulf32(hitInfo.normal.y, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.z = mulf32(hitInfo.normal.z, sphere->radius - hitInfo.penetration);
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
-				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, localPen, &localNormal, sphere, meshObject, &newSphere);
 			trisToCollideWith[i] = 0xFFFF;
 		}
 	}
 	// verts
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfo.normal, &hitInfo.penetration)) {
+		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &localNormal, &localPen)) {
 			hitInfo.hitTri = trisToCollideWith[i];
+			hitInfo.penetration = mulf32(meshObject->scale.x, localPen);
+			QuatTimesVec3(&meshObject->rotation, &localNormal, &hitInfo.normal);
+			hitInfo.hitPos.x = mulf32(hitInfo.normal.x, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.y = mulf32(hitInfo.normal.y, sphere->radius - hitInfo.penetration);
+			hitInfo.hitPos.z = mulf32(hitInfo.normal.z, sphere->radius - hitInfo.penetration);
 			if (collisionFuncs[sphereObject->objectType] == NULL || collisionFuncs[sphereObject->objectType](sphereObject, &hitInfo))
-				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, sphere, meshObject, &newSphere);
+				MoveObjectOut(hitInfo.penetration, &hitInfo.normal, localPen, &localNormal, sphere, meshObject, &newSphere);
 		}
 	}
 	ReleaseTriangleOctreeAllocation(trisToCollideWith);
@@ -390,6 +403,9 @@ ITCM_CODE void SphereObjOnSphereObj(Object *collider, Object* collidee) {
 		hitInfo.normal = normal;
 		hitInfo.penetration = pen;
 		hitInfo.hitObject = collidee;
+		hitInfo.hitPos.x = mulf32(collidee->sphereCol->radius, normal.x) + collidee->position.x;
+		hitInfo.hitPos.y = mulf32(collidee->sphereCol->radius, normal.y) + collidee->position.y;
+		hitInfo.hitPos.z = mulf32(collidee->sphereCol->radius, normal.z) + collidee->position.z;
 		hitInfo.hitTri = -1;
 		if (collisionFuncs[collider->objectType] == NULL || collisionFuncs[collider->objectType](collider, &hitInfo)) {
 			normal.x = mulf32(pen, normal.x);

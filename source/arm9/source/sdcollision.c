@@ -1165,6 +1165,8 @@ ITCM_CODE bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hit
 
 	if (sqrDist <= mulf32(sphere->radius, sphere->radius)) {
 		*hitPos = closestPoint;
+		// global space it again...
+		Vec3Addition(hitPos, box->position, hitPos);
 		if (sqrDist <= 1) {
 			// we're INSIDE the cube, fix!
 			Normalize(&rotatedSpherePoint, normal);
