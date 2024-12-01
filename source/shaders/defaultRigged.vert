@@ -9,6 +9,7 @@ layout(location = 4) in vec4 boneWeights;
 
 uniform mat4 MVP;
 uniform mat4 M;
+uniform mat4 UVMatrix;
 
 #include rigging.glh
 
@@ -20,5 +21,5 @@ out vec3 normal;
 void main() {
 	gl_Position = ApplyRig(vec4(iVert.xyz, 1), boneIndices, boneWeights) * MVP;
 	normal = normalize(ApplyRigNormal(normalize(iNormal), boneIndices.xyzw, boneWeights) * transpose(inverse(mat3(M))));
-	UV = iUV;
+	UV = (vec4(iUV.xy, 0, 1.0) * UVMatrix).xy;
 }

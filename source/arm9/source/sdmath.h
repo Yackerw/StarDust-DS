@@ -172,6 +172,8 @@ void QuatNormalize(Quaternion *input);
 
 void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t);
 
+f32 DotProductNormal(Vec3* left, Vec3* right);
+
 f32 DotProduct(Vec3 *left, Vec3 *right);
 
 void CrossProduct(Vec3 *left, Vec3 *right, Vec3 *out);

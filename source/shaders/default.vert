@@ -7,6 +7,7 @@ layout(location = 2) in vec3 iNormal;
 
 uniform mat4 MVP;
 uniform mat4 M;
+uniform mat4 UVMatrix;
 
 uniform sampler2D mainTexture;
 
@@ -16,5 +17,5 @@ out vec3 normal;
 void main() {
 	gl_Position = vec4(iVert.xyz, 1) * MVP;
 	normal = normalize(iNormal * transpose(inverse(mat3(M))));
-	UV = iUV;
+	UV = (vec4(iUV.xy, 0, 1.0) * UVMatrix).xy;
 }

@@ -188,7 +188,7 @@ struct SDMaterial {
 	f32 texScaleY;
 	unsigned char emissionR;
 	unsigned char emissPadding0;
-	unsigned short texRotation;
+	short texRotation;
 	unsigned char emissionG;
 	unsigned char emissPadding2;
 	unsigned short lightNormal0;

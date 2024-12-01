@@ -242,10 +242,6 @@ ITCM_CODE bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle
 	return false;
 }
 
-ITCM_CODE long long dot64_2(long long x1, long long y1, long long z1, long long x2, long long y2, long long z2) {
-	return mulf64(x1, x2) + mulf64(y1, y2) + mulf64(z1, z2);
-}
-
 ITCM_CODE bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane) {
 	// adjust sphere so triangle is origin
 	Vec3 newSpherePosition;
@@ -866,7 +862,8 @@ ITCM_CODE bool RayOnSphere(Vec3* point, Vec3* direction, CollisionSphere* sphere
 }
 
 ITCM_CODE bool RayOnPlane(Vec3* point, Vec3* direction, Vec3* normal, f32 planeDistance, f32* t, Vec3* hitPos) {
-	f32 nd = DotProduct(direction, normal);
+	// two normals, can safely not use 64 bit here
+	f32 nd = DotProductNormal(direction, normal);
 	f32 pn = DotProduct(point, normal);
 	// if nd is positive, they're facing the same way. no collision
 	if (nd >= 0) {

@@ -242,6 +242,10 @@ ITCM_CODE void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f
 	QuatNormalizeFast(out);
 }
 
+ITCM_CODE f32 DotProductNormal(Vec3* left, Vec3* right) {
+	return ((left->x * right->x) + (left->x * right->x) + (left->x * right->x)) >> 12;
+}
+
 ITCM_CODE f32 DotProduct(Vec3 *left, Vec3 *right) {
 	return mulf32(left->x, right->x) + mulf32(left->y, right->y) + mulf32(left->z, right->z);
 }
