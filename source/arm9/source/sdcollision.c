@@ -149,11 +149,11 @@ ITCM_CODE Vec3 BarycentricCoords(CollisionTriangle *tri, Vec3 *point) {
 	#endif
 }
 
-ITCM_CODE bool SphereOnPoint(CollisionSphere *sphere, Vec3 *point, f32 *penetration) {
+ITCM_CODE bool SphereOnPoint(CollisionSphere *sphere, f32 sphereSquareMagnitude, Vec3 *point, f32 *penetration) {
 	Vec3 distance;
 	Vec3Subtraction(sphere->position, point, &distance);
 	f32 mag = SqrMagnitude(&distance);
-	if (mag < mulf32(sphere->radius, sphere->radius)) {
+	if (mag < sphereSquareMagnitude) {
 		*penetration = sphere->radius - sqrtf32(mag);
 		return true;
 	}
@@ -225,12 +225,13 @@ ITCM_CODE bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *
 	return false;
 }
 
-ITCM_CODE bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
+ITCM_CODE bool SphereOnTriangleVertex(CollisionSphere *sphere, f32 sphereSquareMagnitude, CollisionTriangle *tri, Vec3 *normal, f32 *penetration) {
 	for (int i = 0; i < 3; ++i) {
 		f32 pointMag;
 		Vec3 v;
 		ShortToVec3(tri->verts[i], v);
-		if (SphereOnPoint(sphere, &v, &pointMag)) {
+		// TODO: cache sphere square radius so we aren't recalculating it every time. that 64 bit multiply isn't cheap!
+		if (SphereOnPoint(sphere, sphereSquareMagnitude, &v, &pointMag)) {
 			// get penetration and normal
 			*penetration = pointMag;
 			// normal; subtract the two vectors, then normalize
@@ -664,6 +665,8 @@ ITCM_CODE void FindTrianglesFromOctreeInternal(Vec3* min, Vec3* max, MeshCollide
 			if (AABBCheck(min, max, &vMin, &vMax)) {
 				// omit duplicates
 				bool toContinue = false;
+				// this DEFINITELY needs some form of optimization. iterating over the whole thing is garbage. allocating ANY extra memory is likely slower, though, so i'm unsure how to approach.
+				// form the data into a binary tree instead? though i fear that to be harder to read back
 				for (int j = 0; j < *currSize; ++j) {
 					if (retValue[0][j] == block->triangleList[i]) {
 						toContinue = true;
@@ -1211,4 +1214,31 @@ ITCM_CODE bool SphereOnOBB(CollisionSphere* sphere, CollisionBox* box, Vec3* hit
 		return true;
 	}
 	return false;
+}
+
+// normalBetweenShape1Shape2 expected in the form of shape2-shape1
+bool BasicGJK(Vec3* verts1, int vertCount1, Vec3* verts2, int vertCount2, Vec3* normalBetweenShape1Shape2, Vec3* outputSimplex,
+	Vec3(*findPointSupport1)(Vec3* verts, int vertCount, Vec3 *normal), Vec3(*findPointSupport2)(Vec3* verts, int vertCount, Vec3 *normal)) {
+	Vec3 p1, p2;
+	p1 = findPointSupport1(verts1, vertCount1, normalBetweenShape1Shape2);
+	Vec3 normal;
+	normal.x = -normalBetweenShape1Shape2->x;
+	normal.y = -normalBetweenShape1Shape2->y;
+	normal.z = -normalBetweenShape1Shape2->z;
+	p2 = findPointSupport2(verts2, vertCount2, &normal);
+	Vec3Subtraction(&p1, &p2, outputSimplex);
+	Normalize(outputSimplex, &normal);
+	while (true) {
+		p2 = findPointSupport2(verts2, vertCount2, &normal);
+		normal.x = -normal.x;
+		normal.y = -normal.y;
+		normal.z = -normal.z;
+		p1 = findPointSupport1(verts1, vertCount1, &normal);
+		Vec3Subtraction(&p1, &p2, &outputSimplex[1]);
+		// early out: no point towards origin, therefor simplex can not contain origin
+		if (DotProduct(&normal, &outputSimplex[1]) < 0) {
+			return false;
+		}
+
+	}
 }

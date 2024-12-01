@@ -47,7 +47,7 @@ typedef struct {
 
 bool SphereOnTriangleLine(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration);
 
-bool SphereOnTriangleVertex(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration);
+bool SphereOnTriangleVertex(CollisionSphere* sphere, f32 sphereSquareMagnitude, CollisionTriangle* tri, Vec3* normal, f32* penetration);
 
 bool SphereOnTrianglePlane(CollisionSphere *sphere, CollisionTriangle *tri, Vec3 *normal, f32 *penetration, bool *onPlane);
 

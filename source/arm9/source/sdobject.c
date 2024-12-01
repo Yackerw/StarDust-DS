@@ -241,8 +241,9 @@ int SphereCollisionCheck(CollisionSphere *sphere, unsigned int layerMask, Collis
 				}
 			}
 			// verts
+			f32 sphereRadiusSqr = mulf32(newSphere.radius, newSphere.radius);
 			for (int i = 0; i < totalTris; ++i) {
-				if (trisToCollideWith[i] != -1 && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfos[objsFound].normal, &hitInfos[objsFound].penetration)) {
+				if (trisToCollideWith[i] != -1 && SphereOnTriangleVertex(&newSphere, sphereRadiusSqr, &meshObject->meshCol->triangles[trisToCollideWith[i]], &hitInfos[objsFound].normal, &hitInfos[objsFound].penetration)) {
 					hitInfos[objsFound].hitTri = trisToCollideWith[i];
 					hitInfos[objsFound].hitObject = meshObject;
 					// scale pen by object scale
@@ -379,8 +380,9 @@ ITCM_CODE void SphereObjOnMeshObj(CollisionSphere *sphere, Object *meshObject, O
 		}
 	}
 	// verts
+	f32 sphereRadiusSqr = mulf32(newSphere.radius, newSphere.radius);
 	for (int i = 0; i < totalTris; ++i) {
-		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleVertex(&newSphere, &meshObject->meshCol->triangles[trisToCollideWith[i]], &localNormal, &localPen)) {
+		if (trisToCollideWith[i] != 0xFFFF && SphereOnTriangleVertex(&newSphere, sphereRadiusSqr, &meshObject->meshCol->triangles[trisToCollideWith[i]], &localNormal, &localPen)) {
 			hitInfo.hitTri = trisToCollideWith[i];
 			hitInfo.penetration = mulf32(meshObject->scale.x, localPen);
 			QuatTimesVec3(&meshObject->rotation, &localNormal, &hitInfo.normal);

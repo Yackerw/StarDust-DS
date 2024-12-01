@@ -25,11 +25,23 @@ ITCM_CODE void MakeTranslationMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
 }
 
 ITCM_CODE void MakeScaleMatrix(f32 x, f32 y, f32 z, m4x4 *retValue) {
-	ZeroMatrix(retValue);
+	//ZeroMatrix(retValue);
 	retValue->m[r1x] = x;
 	retValue->m[r2y] = y;
 	retValue->m[r3z] = z;
 	retValue->m[r4w] = 4096;
+	retValue->m[r1y] = 0;
+	retValue->m[r1z] = 0;
+	retValue->m[r1w] = 0;
+	retValue->m[r2x] = 0;
+	retValue->m[r2z] = 0;
+	retValue->m[r2w] = 0;
+	retValue->m[r3x] = 0;
+	retValue->m[r3y] = 0;
+	retValue->m[r3w] = 0;
+	retValue->m[r4x] = 0;
+	retValue->m[r4y] = 0;
+	retValue->m[r4z] = 0;
 }
 
 ITCM_CODE void Combine3x3Matrices(m4x4* left, m4x4* right, m4x4* retValue) {
@@ -186,25 +198,32 @@ ITCM_CODE void QuatNormalizeFast(Quaternion* input) {
 #ifndef _NOTDS
 	f32 magnitude = (input->x * input->x + input->y * input->y + input->z * input->z + input->w * input->w);
 	REG_SQRTCNT = SQRT_32;
-	while (REG_SQRTCNT & SQRT_BUSY);
+	//while (REG_SQRTCNT & SQRT_BUSY);
 	REG_SQRT_PARAM_L = magnitude;
+	// while we wait on sqrt to do its thing, run some bitshifts n stuff to save time later
+	REG_DIVCNT = 0;
+	REG_DIV_NUMER_L = (input->x << 12);
+	int iy = input->y << 12;
+	int iz = input->z << 12;
+	int iw = input->w << 12;
+	// TODO: add some assembly here to kill cycles instead of a wait loop
 	while (REG_SQRTCNT & SQRT_BUSY);
 	magnitude = REG_SQRT_RESULT;
-	/*input->x = divf32(input->x, magnitude);
-	input->y = divf32(input->y, magnitude);
-	input->z = divf32(input->z, magnitude);
-	input->w = divf32(input->w, magnitude);*/
-	input->x = (input->x << 12) / magnitude;
-	input->y = (input->y << 12) / magnitude;
-	input->z = (input->z << 12) / magnitude;
-	input->w = (input->w << 12) / magnitude;
+	REG_DIV_DENOM_L = magnitude;
+	// lets do our best to avoid a wait loop here; we need to wait exactly 18 cycles! it should always be ready by the time we perform 3 more divisions, so...
+	// note: would probably be faster to manually add some NOPs to meet the wait time and do them in 2 batches, but i'm not gonna bother for now
+	input->y = iy / magnitude;
+	input->z = iz / magnitude;
+	input->w = iw / magnitude;
+	input->x = REG_DIV_RESULT_L;
 #else
 	QuatNormalize(input);
 #endif
 }
 
 ITCM_CODE void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f32 t) {
-	f32 cosOmega = mulf32fast(left->x, right->x) + mulf32fast(left->y, right->y) + mulf32fast(left->z, right->z) + mulf32fast(left->w, right->w);
+	//f32 cosOmega = mulf32fast(left->x, right->x) + mulf32fast(left->y, right->y) + mulf32fast(left->z, right->z) + mulf32fast(left->w, right->w);
+	f32 cosOmega = (left->x * right->x + left->y * right->y + left->z * right->z + left->w * right->w) >> 12;
 	Quaternion usedRight;
 	usedRight = *right;
 	// flip signs if necessary to maintain shortest path
@@ -228,10 +247,29 @@ ITCM_CODE void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f
 	} else {
 		// standard slerp
 		f32 omega = acosLerp(cosOmega);
+		// perform side-by-side division on DS
+#ifndef _NOTDS
+		REG_SQRTCNT = SQRT_32;
+		// pre-shift by 12
+		REG_SQRT_PARAM_L = 16777216 - cosOmega*cosOmega;
+		omega = mulf32fast(omega, RotationToFixedRadians);
+		REG_DIVCNT = 0;
+		REG_DIV_NUMER_L = sinLerp(mulf32fast(t, omega)) << 12;
+		scaleFrom = sinLerp(mulf32fast(4096 - t, omega));
+		f32 sinOmega = REG_SQRT_RESULT;
+		REG_DIV_DENOM_L = sinOmega;
+		// regrettably, one division isn't gonna cut it here...time to throw cycles...
+		scaleFrom = divf32fast(scaleFrom, sinOmega);
+		//REG_DIV_DENOM_L = sinOmega;
+		while (REG_DIVCNT & DIV_BUSY);
+		scaleTo = REG_DIV_RESULT_L;
+		//scaleTo = divf32fast(sinLerp(mulf32fast(t, omega)), sinOmega);
+#else
 		f32 sinOmega = sqrtf32(4096 - mulf32fast(cosOmega, cosOmega));
 		omega = mulf32fast(omega, RotationToFixedRadians);
 		scaleFrom = divf32fast(sinLerp(mulf32fast(4096 - t, omega)), sinOmega);
 		scaleTo = divf32fast(sinLerp(mulf32fast(t, omega)), sinOmega);
+#endif
 	}
 	out->x = (scaleFrom * left->x + scaleTo * usedRight.x) >> 12;
 	out->y = (scaleFrom * left->y + scaleTo * usedRight.y) >> 12;

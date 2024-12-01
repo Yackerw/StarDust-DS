@@ -1066,73 +1066,75 @@ ITCM_CODE bool SetupMaterial(SDMaterial* mat, bool rigged) {
 		}
 		// allow light overrides to occur
 		// reset matrix because for SOME REASON the light is rotated by that when set up
-		glMatrixMode(GL_MODELVIEW);
-		if (rigged) {
-			glLoadIdentity();
-		}
-		else {
-			glPushMatrix();
-			glLoadIdentity();
-		}
+		if (mat->lightingFlags & LIGHT_OVERRIDEMASK) {
+			glMatrixMode(GL_MODELVIEW);
+			if (rigged) {
+				glLoadIdentity();
+			}
+			else {
+				glPushMatrix();
+				glLoadIdentity();
+			}
 
-		if (mat->lightingFlags & LIGHT_OVERRIDE0) {
-			flags |= 1;
-			glLight(0, mat->lightOverride0, (mat->lightNormal0 & 0x1F) * 32, ((mat->lightNormal0 >> 5) & 0x1F) * 32, ((mat->lightNormal0 >> 10) & 0x1F) * 32);
-			lightsDirty[0] = true;
-		}
-		else {
-			if (lightsDirty[0]) {
-				glLight(0, lightColor[0], lightNormal[0].x, lightNormal[0].y, lightNormal[0].z);
-				lightsDirty[0] = false;
+			if (mat->lightingFlags & LIGHT_OVERRIDE0) {
+				flags |= 1;
+				glLight(0, mat->lightOverride0, (mat->lightNormal0 & 0x1F) * 32, ((mat->lightNormal0 >> 5) & 0x1F) * 32, ((mat->lightNormal0 >> 10) & 0x1F) * 32);
+				lightsDirty[0] = true;
 			}
-		}
-		if (mat->lightingFlags & LIGHT_OVERRIDE1) {
-			flags |= 2;
-			glLight(1, mat->lightOverride1, (mat->lightNormal1 & 0x1F) * 32, ((mat->lightNormal1 >> 5) & 0x1F) * 32, ((mat->lightNormal1 >> 10) & 0x1F) * 32);
-			lightsDirty[1] = true;
-		}
-		else {
-			if (lightsDirty[1]) {
-				glLight(1, lightColor[1], lightNormal[1].x, lightNormal[1].y, lightNormal[1].z);
-				lightsDirty[1] = false;
+			else {
+				if (lightsDirty[0]) {
+					glLight(0, lightColor[0], lightNormal[0].x, lightNormal[0].y, lightNormal[0].z);
+					lightsDirty[0] = false;
+				}
 			}
-		}
-		if (mat->lightingFlags & LIGHT_OVERRIDE2) {
-			flags |= 4;
-			// hell world backwards compatibility with materials
-			unsigned short currLightNormal = mat->lightNormal2Pt0 | (mat->lightNormal2Pt1 << 8);
-			glLight(2, mat->lightOverride2, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
-			lightsDirty[2] = true;
-		}
-		else {
-			if (lightsDirty[2]) {
-				glLight(2, lightColor[2], lightNormal[2].x, lightNormal[2].y, lightNormal[2].z);
-				lightsDirty[3] = false;
+			if (mat->lightingFlags & LIGHT_OVERRIDE1) {
+				flags |= 2;
+				glLight(1, mat->lightOverride1, (mat->lightNormal1 & 0x1F) * 32, ((mat->lightNormal1 >> 5) & 0x1F) * 32, ((mat->lightNormal1 >> 10) & 0x1F) * 32);
+				lightsDirty[1] = true;
 			}
-		}
-		if (mat->lightingFlags & LIGHT_OVERRIDE3) {
-			flags |= 8;
-			// hell world backwards compatibility with materials
-			unsigned short currLightNormal = mat->lightNormal3Pt0 | (mat->lightNormal3Pt1 << 8);
-			glLight(3, mat->lightOverride3, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
-			lightsDirty[3] = true;
-		}
-		else {
-			if (lightsDirty[3]) {
-				glLight(3, lightColor[3], lightNormal[3].x, lightNormal[3].y, lightNormal[3].z);
-				lightsDirty[3] = false;
+			else {
+				if (lightsDirty[1]) {
+					glLight(1, lightColor[1], lightNormal[1].x, lightNormal[1].y, lightNormal[1].z);
+					lightsDirty[1] = false;
+				}
 			}
-		}
+			if (mat->lightingFlags & LIGHT_OVERRIDE2) {
+				flags |= 4;
+				// hell world backwards compatibility with materials
+				unsigned short currLightNormal = mat->lightNormal2Pt0 | (mat->lightNormal2Pt1 << 8);
+				glLight(2, mat->lightOverride2, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
+				lightsDirty[2] = true;
+			}
+			else {
+				if (lightsDirty[2]) {
+					glLight(2, lightColor[2], lightNormal[2].x, lightNormal[2].y, lightNormal[2].z);
+					lightsDirty[3] = false;
+				}
+			}
+			if (mat->lightingFlags & LIGHT_OVERRIDE3) {
+				flags |= 8;
+				// hell world backwards compatibility with materials
+				unsigned short currLightNormal = mat->lightNormal3Pt0 | (mat->lightNormal3Pt1 << 8);
+				glLight(3, mat->lightOverride3, (currLightNormal & 0x1F) * 32, ((currLightNormal >> 5) & 0x1F) * 32, ((currLightNormal >> 10) & 0x1F) * 32);
+				lightsDirty[3] = true;
+			}
+			else {
+				if (lightsDirty[3]) {
+					glLight(3, lightColor[3], lightNormal[3].x, lightNormal[3].y, lightNormal[3].z);
+					lightsDirty[3] = false;
+				}
+			}
 
-		if (!rigged) {
-			glPopMatrix(1);
+			if (!rigged) {
+				glPopMatrix(1);
+			}
 		}
 		int diffR = mat->colorR * ambientColor.x;
 		int diffG = mat->colorG * ambientColor.y;
 		int diffB = mat->colorB * ambientColor.z;
-		diffR = diffR ? ((diffR + 1) >> 5) : 0;
-		diffG = diffG ? ((diffG + 1) >> 5) : 0;
-		diffB = diffB ? ((diffB + 1) >> 5) : 0;
+		diffR = diffR ? ((diffR >> 5) + 1) : 0;
+		diffG = diffG ? ((diffG >> 5) + 1) : 0;
+		diffB = diffB ? ((diffB >> 5) + 1) : 0;
 		diffR += mat->emissionR;
 		diffG += mat->emissionG;
 		diffB += mat->emissionB;
