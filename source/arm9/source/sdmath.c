@@ -281,7 +281,7 @@ ITCM_CODE void QuatSlerp(Quaternion *left, Quaternion *right, Quaternion *out, f
 }
 
 ITCM_CODE f32 DotProductNormal(Vec3* left, Vec3* right) {
-	return ((left->x * right->x) + (left->x * right->x) + (left->x * right->x)) >> 12;
+	return ((left->x * right->x) + (left->y * right->y) + (left->z * right->z)) >> 12;
 }
 
 ITCM_CODE f32 DotProduct(Vec3 *left, Vec3 *right) {
