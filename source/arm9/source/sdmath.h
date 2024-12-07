@@ -208,8 +208,6 @@ void Reflect(Vec3 *a, Vec3 *b, Vec3 *out);
 
 f32 Clamp(f32 value, f32 min, f32 max);
 
-int iClamp(int value, int min, int max);
-
 f32 Max(f32 value, f32 max);
 
 f32 Min(f32 value, f32 min);
@@ -237,5 +235,7 @@ void QuaternionToEuler(Quaternion* quat, Vec3* euler);
 f32 f32rand(f32 min, f32 max);
 
 long long Int64Div(int left, int right);
+
+bool VecEqual(Vec3* a, Vec3* b);
 
 #endif
