@@ -2019,7 +2019,6 @@ void RenderStencilPC(Material *renderMat, Mesh* nativeModel, SubMesh *subMesh, b
 			// on DS, transparents will always stencil each other out
 			glStencilFunc(GL_NOTEQUAL, stencilValue + 0x20, 0x3F);
 			glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-			renderMat->transparent = false;
 			RenderSubMesh(nativeModel, renderMat, subMesh[0], &renderMat->mainShader);
 		}
 	}
