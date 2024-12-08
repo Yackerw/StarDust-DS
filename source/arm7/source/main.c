@@ -122,7 +122,7 @@ void PlaySound(SoundData* sd) {
 	}
 
 	// frequency maybe?
-	audioRegisters[currRegister].SOUNDTMR = SOUND_FREQ((int)sd->sound->sampleRate);
+	audioRegisters[currRegister].SOUNDTMR = SOUND_FREQ((int)mulf32(sd->sound->sampleRate, sd->pitch));
 
 	// aaand go!
 	audioRegisters[currRegister].SOUNDCNT = workValue;
