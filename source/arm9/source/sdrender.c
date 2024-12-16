@@ -3065,7 +3065,7 @@ void UploadSprite(Sprite* input, bool sub, bool BG) {
 #ifndef _NOTDS
 	input->DSResolution = spriteNativeResolutions[(int)input->resolution];
 	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->DSResolution, input->format);
-	float multiplier = input->format == 1 ? 0.5f : input->format == 2 ? 1.0f : 2.0f;
+	float multiplier = input->format == 0 ? 0.5f : input->format == 1 ? 1.0f : 2.0f;
 	dmaCopy(input->image, input->gfx, multiplier * (input->width * input->height));
 	input->paletteOffset = 15;
 	// TODO: 8 & 4 bit sprites
@@ -3089,14 +3089,14 @@ void UploadSprite(Sprite* input, bool sub, bool BG) {
 	texture->WrapV = TexWrapClamp;
 
 	// make first color transparent
-	if (!BG) {
+	if (!BG && input->format != 2) {
 		for (int i = 0; i < input->width * input->height; ++i) {
 			if (nativeColors[i].r == nativeColors[0].r && nativeColors[i].g == nativeColors[0].g && nativeColors[i].b == nativeColors[i].b) {
 				nativeColors[i].a = 0;
 			}
 		}
 	}
-	else {
+	else if (BG) {
 		// un-fuck the texture
 		TextureRGBA* newColors = malloc(sizeof(TextureRGBA) * input->width * input->height);
 		for (int i = 0; i < input->height; i += 8) {
