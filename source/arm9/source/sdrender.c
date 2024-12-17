@@ -3064,7 +3064,7 @@ unsigned int spriteNativeResolutions[] = {
 void UploadSprite(Sprite* input, bool sub, bool BG) {
 #ifndef _NOTDS
 	input->DSResolution = spriteNativeResolutions[(int)input->resolution];
-	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->DSResolution, input->format);
+	input->gfx = (char*)oamAllocateGfx(sub ? &oamSub : &oamMain, input->DSResolution, input->format == 2 ? 3 : input->format);
 	float multiplier = input->format == 0 ? 0.5f : input->format == 1 ? 1.0f : 2.0f;
 	dmaCopy(input->image, input->gfx, multiplier * (input->width * input->height));
 	input->paletteOffset = 15;
