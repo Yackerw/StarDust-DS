@@ -482,6 +482,14 @@ def reorder_bones(optObj, blendObj, skeleton, scale, avgx, avgy, avgz):
     optSkeleton = []
     for bone in skeleton.data.bones:
         if (bone.use_deform):
+            # ignore bones that aren't actually a part of vertex groups
+            isInGroups = False
+            for x in blendObj.vertex_groups:
+                if (x.name == bone.name):
+                    isInGroups = True
+                    break
+            if (isInGroups == False):
+                continue
             optBone = optimized_bone()
             optBone.blenderBone = bone
             optSkeleton.append(optBone)
