@@ -242,6 +242,137 @@ namespace SDImageConverter
 			return;
 		}
 
+		static void CreatePCA5(string fileName, int UType, int VType, bool retain)
+		{
+			Bitmap fileToConvert;
+			try
+			{
+				fileToConvert = (Bitmap)Bitmap.FromFile(fileName);
+			}
+			catch
+			{
+				Console.WriteLine("Couldn't open file " + fileName);
+				return;
+			}
+			PaletteImage pi = PaletteifyImage(fileToConvert, 8, true);
+			int width = 0;
+			int height = 0;
+			switch (pi.width)
+			{
+				case 8:
+					width = 0;
+					break;
+				case 16:
+					width = 1;
+					break;
+				case 32:
+					width = 2;
+					break;
+				case 64:
+					width = 3;
+					break;
+				case 128:
+					width = 4;
+					break;
+				case 256:
+					width = 5;
+					break;
+				case 512:
+					width = 6;
+					break;
+				case 1024:
+					width = 7;
+					break;
+				default:
+					Console.WriteLine("Image dimensions must be power of 2!");
+					return;
+					break;
+			}
+			switch (pi.height)
+			{
+				case 8:
+					height = 0;
+					break;
+				case 16:
+					height = 1;
+					break;
+				case 32:
+					height = 2;
+					break;
+				case 64:
+					height = 3;
+					break;
+				case 128:
+					height = 4;
+					break;
+				case 256:
+					height = 5;
+					break;
+				case 512:
+					height = 6;
+					break;
+				case 1024:
+					height = 7;
+					break;
+				default:
+					Console.WriteLine("Image dimensions must be power of 2!");
+					return;
+					break;
+			}
+			byte[] processedData = new byte[pi.pixelIndexes.Count];
+			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
+			{
+				processedData[i] = (byte)((byte)(pi.pixelIndexes[i]) | (byte)((pi.alpha[i] >> 3) << 3));
+			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
+			if (paletteData.Length < 8)
+			{
+				Array.Resize(ref paletteData, 8);
+			}
+			// write data now
+			FileStream fs = File.Open(fileName.Substring(0, fileName.Length - 3) + "sdi", FileMode.Create);
+			fs.WriteByte(6);
+			fs.WriteByte((byte)width);
+			fs.WriteByte((byte)height);
+			// whether or not it remains in ram
+			fs.WriteByte(retain ? (byte)1 : (byte)0);
+			//  reference count
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// UV types
+			fs.WriteByte((byte)UType);
+			fs.WriteByte((byte)VType);
+			// padding
+			fs.WriteByte((byte)0);
+			fs.WriteByte((byte)0);
+
+			// palette pointer
+			fs.Write(BitConverter.GetBytes((int)0x30));
+			// image data pointer
+			fs.Write(BitConverter.GetBytes(0x30 + (paletteData.Length * 2)));
+			// char *texturename
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// previous (0x10)
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// next (0x14)
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// int texture id, int palette id
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// padding
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// palette now
+			for (int i = 0; i < paletteData.Length; ++i)
+			{
+				fs.Write(BitConverter.GetBytes(paletteData[i]), 0, 2);
+			}
+			// image data now
+			fs.Write(processedData, 0, processedData.Length);
+			fs.Close();
+			return;
+		}
+
 		static void CreatePC16(string fileName, int UType, int VType, bool retain)
 		{
 			Bitmap fileToConvert;
@@ -605,6 +736,137 @@ namespace SDImageConverter
 			// write data now
 			FileStream fs = File.Open(fileName.Substring(0, fileName.Length - 3) + "sdi", FileMode.Create);
 			fs.WriteByte(3);
+			fs.WriteByte((byte)width);
+			fs.WriteByte((byte)height);
+			// whether or not it remains in ram
+			fs.WriteByte(retain ? (byte)1 : (byte)0);
+			//  reference count
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// UV types
+			fs.WriteByte((byte)UType);
+			fs.WriteByte((byte)VType);
+			// padding
+			fs.WriteByte((byte)0);
+			fs.WriteByte((byte)0);
+
+			// palette pointer
+			fs.Write(BitConverter.GetBytes((int)0x30));
+			// image data pointer
+			fs.Write(BitConverter.GetBytes(0x30 + (paletteData.Length * 2)));
+			// char *texturename
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// previous (0x10)
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// next (0x14)
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// int texture id, int palette id
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// padding
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			fs.Write(BitConverter.GetBytes(0), 0, 4);
+			// palette now
+			for (int i = 0; i < paletteData.Length; ++i)
+			{
+				fs.Write(BitConverter.GetBytes(paletteData[i]), 0, 2);
+			}
+			// image data now
+			fs.Write(processedData, 0, processedData.Length);
+			fs.Close();
+			return;
+		}
+
+		static void CreatePC2(string fileName, int UType, int VType, bool retain)
+		{
+			Bitmap fileToConvert;
+			try
+			{
+				fileToConvert = (Bitmap)Bitmap.FromFile(fileName);
+			}
+			catch
+			{
+				Console.WriteLine("Couldn't open file " + fileName);
+				return;
+			}
+			PaletteImage pi = PaletteifyImage(fileToConvert, 4);
+			int width = 0;
+			int height = 0;
+			switch (pi.width)
+			{
+				case 8:
+					width = 0;
+					break;
+				case 16:
+					width = 1;
+					break;
+				case 32:
+					width = 2;
+					break;
+				case 64:
+					width = 3;
+					break;
+				case 128:
+					width = 4;
+					break;
+				case 256:
+					width = 5;
+					break;
+				case 512:
+					width = 6;
+					break;
+				case 1024:
+					width = 7;
+					break;
+				default:
+					Console.WriteLine("Image dimensions must be power of 2!");
+					return;
+					break;
+			}
+			switch (pi.height)
+			{
+				case 8:
+					height = 0;
+					break;
+				case 16:
+					height = 1;
+					break;
+				case 32:
+					height = 2;
+					break;
+				case 64:
+					height = 3;
+					break;
+				case 128:
+					height = 4;
+					break;
+				case 256:
+					height = 5;
+					break;
+				case 512:
+					height = 6;
+					break;
+				case 1024:
+					height = 7;
+					break;
+				default:
+					Console.WriteLine("Image dimensions must be power of 2!");
+					return;
+					break;
+			}
+			// palette data now
+			ushort[] paletteData = ConvertPalette(pi);
+			byte[] processedData = new byte[pi.pixelIndexes.Count / 4];
+			for (int i = 0; i < pi.pixelIndexes.Count; ++i)
+			{
+				processedData[i / 4] |= (byte)(pi.pixelIndexes[i] << (2 * (i % 4)));
+			}
+			if (paletteData.Length < 4)
+			{
+				Array.Resize(ref paletteData, 4);
+			}
+			// write data now
+			FileStream fs = File.Open(fileName.Substring(0, fileName.Length - 3) + "sdi", FileMode.Create);
+			fs.WriteByte(2);
 			fs.WriteByte((byte)width);
 			fs.WriteByte((byte)height);
 			// whether or not it remains in ram
@@ -1152,10 +1414,12 @@ namespace SDImageConverter
 			if (args.Length < 2)
 			{
 				Console.WriteLine("Args:");
+				Console.WriteLine("-pc2: 4 color palette");
 				Console.WriteLine("-pc4: 16 color palette");
 				Console.WriteLine("-pc8: 256 color palette");
 				Console.WriteLine("-pc16: direct 16 bit color");
-				Console.WriteLine("-pc32: 32 color palette, 3 bit alpha");
+				Console.WriteLine("-pca3: 32 color palette, 3 bit alpha");
+				Console.WriteLine("-pca5: 8 color palette, 5 bit alpha");
 				Console.WriteLine("-t8: 256 color palette, tiled format");
 				Console.WriteLine("-s4: 16 color palette sprite");
 				Console.WriteLine("-s8: 256 color palette sprite");
@@ -1237,6 +1501,11 @@ namespace SDImageConverter
 
 			switch (args[0])
 			{
+				case "-pc2":
+					{
+						CreatePC2(args[args.Length - 1], utype, vtype, retain);
+					}
+					break;
 				case "-pc4":
 					{
 						CreatePC4(args[args.Length - 1], utype, vtype, retain);
@@ -1252,9 +1521,14 @@ namespace SDImageConverter
 						CreatePC16(args[args.Length - 1], utype, vtype, retain);
 					}
 					break;
-				case "-pc32":
+				case "-pca3":
 					{
 						CreatePC32(args[args.Length - 1], utype, vtype, retain);
+					}
+					break;
+				case "-pca5":
+					{
+						CreatePCA5(args[args.Length - 1], utype, vtype, retain);
 					}
 					break;
 				case "-t8":
